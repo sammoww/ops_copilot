@@ -47,6 +47,12 @@
   tests/test_config.py::test_settings_secret_masking PASSED                [ 75%]
   tests/test_config.py::test_settings_missing_api_key_raises_validation_error PASSED [100%]
   4 passed in 0.09s
+- **Fail-Fast Demonstration Tests (`tests/demo_fail_fast.py`)**:
+  ```text
+  pytest tests/demo_fail_fast.py -v
+  tests/demo_fail_fast.py::test_os_getenv_fails_late_during_request PASSED [ 50%]
+  tests/demo_fail_fast.py::test_pydantic_fails_fast_at_boot PASSED         [100%]
+  2 passed in 0.02s
   ```
 
 ### 5. Day 1 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
