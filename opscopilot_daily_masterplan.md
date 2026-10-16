@@ -97,9 +97,9 @@ Write a production-grade src/config.py using Pydantic Settings (BaseSettings) fo
 3. Ensure these documents contain specific numbers, error codes (e.g., `ERR_503_DB_TIMEOUT`), and procedural steps.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why are markdown (`.md`) files easier to parse reliably in production RAG systems than multi-column PDFs?
-* [ ] **Q2:** If an internal company doc has tables, how do standard text splitters typically corrupt that data?
-* [ ] **Q3:** What is document "metadata" (e.g., filename, author, updated_at), and why will recruiters look for it in your retrieval layer?
+* [x] **Q1:** Why are markdown (`.md`) files easier to parse reliably in production RAG systems than multi-column PDFs?
+* [x] **Q2:** If an internal company doc has tables, how do standard text splitters typically corrupt that data?
+* [x] **Q3:** What is document "metadata" (e.g., filename, author, updated_at), and why will recruiters look for it in your retrieval layer?
 
 ---
 

@@ -82,3 +82,55 @@
     - Isolates the entire user space using Linux kernel primitives (`namespaces` for PID, network, mount; `cgroups` for CPU, memory limits).
     - Packages the complete operating system filesystem (base image like Alpine or Ubuntu Debian), system-level C libraries, dependencies, environment variables, network interfaces, and Python runtime.
     - Completely portable: an image built on one machine runs identically on any Docker-compatible host regardless of the underlying host OS.
+
+---
+
+## 2026-10-16 — Day 2: Curating the Ingestion Dataset
+
+### 1. What Was Done
+- Respected the strict Day 2 boundary: **zero coding**, purely dataset sourcing and structural curation.
+- Created `data/runbooks/` directory for incident and policy documentation.
+- Sourced and authored 3 distinct, highly realistic technical runbooks and standard operating procedures (SOPs):
+  1. `data/runbooks/database_failover_runbook.md` (673 words): PostgreSQL Patroni/Aurora HA failover, heartbeat alerts, split-brain fencing, PgBouncer switchover commands, and error codes (`ERR_503_DB_TIMEOUT`, `ERR_08006_CONNECTION_FAILURE`).
+  2. `data/runbooks/refund_policy_enterprise.md` (649 words): Enterprise commercial SLA downtime credit grids, formulas, approval escalation tiers, and error codes (`SLA_CR_TIER1`, `ERR_REFUND_LIMIT_EXCEEDED`).
+  3. `data/runbooks/user_provisioning_sop.md` (666 words): SCIM 2.0 provisioning lifecycle, Okta/Entra ID integration, RBAC session matrices, break-glass 2-person quorum emergency procedure, and error codes (`ERR_401_SCIM_TOKEN_EXPIRED`, `ERR_409_USER_CONFLICT`).
+- Integrated structured YAML frontmatter headers (document ID, title, category, author, severity, compliance) on all documents to support downstream metadata filtering in the vector store.
+
+### 2. What Worked
+- All three documents meet the length threshold (each 600–700 words, within the 500–1500 range).
+- Real-world procedural detail, code blocks, tabular grids, and explicit operational metrics provide rich retrieval ground truth for Day 3 chunking and Day 5 semantic search.
+
+### 3. What Failed & Why
+- Nothing failed; purely document creation and metadata structuring.
+
+### 4. Verification Results
+Document metrics measured directly:
+| Document Name | Lines | Word Count | Size (Bytes) | Category |
+| :--- | :--- | :--- | :--- | :--- |
+| `database_failover_runbook.md` | 85 | 673 | 4,998 | Infrastructure / Database Reliability |
+| `refund_policy_enterprise.md` | 62 | 649 | 4,375 | Commercial Operations & Finance |
+| `user_provisioning_sop.md` | 76 | 666 | 4,858 | Identity & Access Management (IAM) |
+
+### 5. Day 2 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why are markdown (`.md`) files easier to parse reliably in production RAG systems than multi-column PDFs?
+- **Answer**:
+  - **Single Linear Text Stream vs 2D Coordinate Floats**: PDFs do not store sentences or semantic structures (like headers or paragraphs). PDFs store raw graphical drawing instructions (e.g., place glyph 'H' at coordinate `X=72.4, Y=180.2`). When PDF parsers extract text from multi-column documents, they frequently read horizontally across columns, stitching Column 1 Line 1 directly into Column 2 Line 1, resulting in garbled nonsense.
+  - **Explicit Semantic Hierarchy**: Markdown provides deterministic syntax tokens (`#`, `##`, `###`, `-`, `|`). A chunking algorithm can cleanly understand section boundaries and split on headers using `MarkdownHeaderTextSplitter`.
+  - **Zero Parsing Artifacts**: PDFs suffer from hyphenation splits (e.g., `fail-\nover`), missing spaces between words, headers/footers repeating on every page, and page number noise that pollutes vector embeddings. Markdown is clean, plain UTF-8 text.
+
+#### Q2: If an internal company doc has tables, how do standard text splitters typically corrupt that data?
+- **Answer**:
+  - **Destruction of Row-Column Relationships**: Standard splitters (like recursive character splitters or token chunkers) treat tabular data as generic strings. If a chunk boundary lands on line 4 of a 10-row table, Chunk A gets the table headers and rows 1–3, while Chunk B gets rows 4–10 without any column headers.
+  - **Hallucination Trigger in RAG**: When an LLM receives rows without column headers in Chunk B, it cannot determine which column corresponds to "Threshold" vs. "Severity" vs. "Action", leading to hallucinated numbers or false recommendations during incident response.
+  - **Production Solution**: Advanced pipelines use table-aware chunking (e.g., Markdown table parsers or HTML table serializers) that repeat the table header across split table chunks, or convert each row into key-value semantic statements (e.g., `Row: Alert='ERR_503', Severity='Critical'`).
+
+#### Q3: What is document "metadata" (e.g., filename, author, updated_at), and why will recruiters look for it in your retrieval layer?
+- **Answer**:
+  - **Definition**: Metadata is auxiliary structured data attached to text chunks (e.g., `source_file: "database_failover.md"`, `section: "Execution"`, `last_updated: "2026-10-14"`, `access_tier: "sre-oncall"`).
+  - **Why Recruiters & Interviewers Look For It**:
+    1. **Pre-Filtering (Filtered Vector Search)**: Instead of searching across millions of irrelevant company chunks, metadata allows queries like: *"Find matches for timeout, WHERE category == 'database' AND status == 'active'"*. This drastically cuts vector search latency and removes irrelevant noise.
+    2. **Security & Access Control (RBAC)**: An engineer with `dev-readonly` permissions must not be able to retrieve chunks containing break-glass passwords or executive financial formulas. Metadata filtering enforces row-level security before chunks enter the context window.
+    3. **Precise Citations & Trust**: Enterprise users will not trust an LLM response during an outage without verifiable citations. Metadata allows the model to state: `[Source: database_failover_runbook.md, Section: Step 4.2]`.
+    4. **Cache Invalidation & Freshness**: Metadata enables replacing or pruning old chunks when a runbook is updated, preventing stale answers.
+
