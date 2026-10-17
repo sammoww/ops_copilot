@@ -120,9 +120,9 @@ Write a Python script src/ingest.py that reads all .md files in data/runbooks/ u
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why do we need `chunk_overlap`? What happens to a sentence that gets cut exactly in half at the chunk boundary without overlap?
-* [ ] **Q2:** Why `RecursiveCharacterTextSplitter` instead of a simple character-count slice? (What separators does it try first?)
-* [ ] **Q3:** If you set chunk size to 5,000 tokens vs 200 tokens, how does that affect retrieval precision vs context richness?
+* [x] **Q1:** Why do we need `chunk_overlap`? What happens to a sentence that gets cut exactly in half at the chunk boundary without overlap?
+* [x] **Q2:** Why `RecursiveCharacterTextSplitter` instead of a simple character-count slice? (What separators does it try first?)
+* [x] **Q3:** If you set chunk size to 5,000 tokens vs 200 tokens, how does that affect retrieval precision vs context richness?
 
 ---
 

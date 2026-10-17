@@ -134,3 +134,79 @@ Document metrics measured directly:
     3. **Precise Citations & Trust**: Enterprise users will not trust an LLM response during an outage without verifiable citations. Metadata allows the model to state: `[Source: database_failover_runbook.md, Section: Step 4.2]`.
     4. **Cache Invalidation & Freshness**: Metadata enables replacing or pruning old chunks when a runbook is updated, preventing stale answers.
 
+---
+
+## 2026-10-17 — Day 3: Chunking Engine with Token Control
+
+### 1. What Was Done
+- Respected the strict Day 3 boundary: **no vector database or OpenAI embedding calls today**. Purely text reading, frontmatter extraction, and chunk splitting in memory.
+- Created `src/ingest.py`:
+  - `parse_frontmatter`: Extracts YAML frontmatter attributes from markdown files.
+  - `load_runbook_documents`: Reads all `.md` files in `data/runbooks/` and builds LangChain `Document` objects with merged and sanitized metadata.
+  - `get_chunking_splitter`: Configures LangChain's `RecursiveCharacterTextSplitter` with `chunk_size=800`, `chunk_overlap=120`, and `add_start_index=True`.
+  - `chunk_documents`: Breaks documents into semantic chunks.
+  - CLI runner under `if __name__ == '__main__':` displaying loaded documents, total chunk counts, and two sample chunks with full metadata.
+- Implemented automated test suite in `tests/test_ingest.py` testing frontmatter parsing, runbook loading, chunk counts, character boundary limits, and chunk overlap continuity.
+
+### 2. What Worked
+- Loading 3 runbooks generated 22 high-quality semantic chunks.
+- Each chunk preserves `document_id`, `title`, `category`, `source`, `filename`, and `start_index`.
+- Test suite (`tests/test_ingest.py`) passed cleanly in 0.27s.
+
+### 3. What Failed & Why
+- Nothing failed; clean execution on first attempt.
+
+### 4. Verification Results
+- **Direct CLI Execution**:
+  ```text
+  python src/ingest.py
+  [LOAD] Successfully loaded 3 runbook document(s):
+    - database_failover_runbook.md | Title: 'PostgreSQL High Availability & Primary Failover Runbook' (4662 chars)
+    - refund_policy_enterprise.md | Title: 'Enterprise Service Level Agreement (SLA) Breach & Credit Refund Policy' (4031 chars)
+    - user_provisioning_sop.md | Title: 'Enterprise User Identity Provisioning, SCIM Integration & Break-Glass Access SOP' (4492 chars)
+  [SPLIT] Generated 22 total chunk(s) (chunk_size=800, chunk_overlap=120)
+  ```
+- **Automated Tests**:
+  ```text
+  pytest -v
+  tests/test_config.py::test_settings_loads_valid_env PASSED               [ 12%]
+  tests/test_config.py::test_settings_default_chroma_dir PASSED            [ 25%]
+  tests/test_config.py::test_settings_secret_masking PASSED                [ 37%]
+  tests/test_config.py::test_settings_missing_api_key_raises_validation_error PASSED [ 50%]
+  tests/test_ingest.py::test_parse_frontmatter PASSED                      [ 62%]
+  tests/test_ingest.py::test_load_runbook_documents PASSED                 [ 75%]
+  tests/test_ingest.py::test_chunk_documents_bounds_and_count PASSED       [ 87%]
+  tests/test_ingest.py::test_chunk_overlap_preserves_continuity PASSED     [100%]
+  8 passed in 0.27s
+  ```
+
+### 5. Day 3 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why do we need `chunk_overlap`? What happens to a sentence that gets cut exactly in half at the chunk boundary without overlap?
+- **Answer**:
+  - **The Boundary Severing Problem**: Without overlap, text is chopped strictly at character/token limits. If an emergency command or key sentence lands on the split boundary (e.g. `Chunk A: "To prevent data loss, execute rm -rf /var/lib/pg"`, `Chunk B: "data/backup before initiating failover."`), the semantic meaning is completely severed.
+  - **Destruction of Context & Embeddings**: Vector embedding models encode entire chunks into a single coordinate point. When a sentence is cut in half with no overlap, neither Chunk A nor Chunk B has the complete semantic thought. If an engineer searches for `"data loss prevention"`, the embedding match fails or retrieves a dangerously incomplete command.
+  - **Role of `chunk_overlap=120`**: Overlap carries the trailing 120 characters of Chunk A into the start of Chunk B. This guarantees every sentence or concept is preserved intact in at least one chunk, preventing lost knowledge across arbitrary slice boundaries.
+
+#### Q2: Why `RecursiveCharacterTextSplitter` instead of a simple character-count slice? (What separators does it try first?)
+- **Answer**:
+  - **Hierarchy of Natural Human Writing**: Humans do not write arbitrary character streams; writing follows a hierarchy: **Paragraphs -> Sentences -> Words -> Characters**.
+  - **Separator Order**: `RecursiveCharacterTextSplitter` attempts splits in this strict prioritized order:
+    1. `"\n\n"` (Double newline): Keep entire paragraphs together whenever possible.
+    2. `"\n"` (Single newline): Keep lines or list items together.
+    3. `" "` (Whitespace): Keep individual words intact; never cut in the middle of a word (e.g., cutting `PostgreSQL` into `Post` and `greSQL`).
+    4. `""` (Empty string): Last resort only if a single word exceeds the entire `chunk_size`.
+  - **Contrast with Character Slicing (`text[:800]`)**: A naive character slice chops blindly through words, markdown links, code commands, and table rows, leaving mangled tokens that confuse LLM tokenizers and degrade retrieval accuracy.
+
+#### Q3: If you set chunk size to 5,000 tokens vs 200 tokens, how does that affect retrieval precision vs context richness?
+- **Answer**:
+  - **The Precision vs. Context Trade-Off**:
+    - **Large Chunks (e.g., 5,000 tokens)**:
+      - *Context Richness*: Very High. The LLM gets the entire section, all tables, caveats, and background.
+      - *Retrieval Precision*: Low ("Needle in a Haystack"). An embedding vector averages the meaning of all 5,000 tokens into one dense vector. Specific error codes (like `ERR_503_DB_TIMEOUT`) get diluted in the background noise of the large chunk. Also, retrieving 3 chunks costs 15,000 tokens, creating high latency, high API costs, and possible context window saturation.
+    - **Small Chunks (e.g., 200 tokens)**:
+      - *Retrieval Precision*: Very High. The embedding specifically and sharply represents a single sentence or alert rule.
+      - *Context Richness*: Low ("Missing the Forest for the Trees"). The retrieved chunk might give the promotion command (`pg_ctl promote`) without the vital preceding warning: *"Only execute if replication lag < 30 seconds"*, risking catastrophic operator error.
+  - **Production Sweet Spot**: `chunk_size = 500–1,000 tokens (or ~800 characters)` with `10–20% overlap` strikes the optimal balance for technical runbooks, capturing complete procedural steps without embedding dilution.
+
+
