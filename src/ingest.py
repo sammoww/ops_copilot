@@ -1,11 +1,16 @@
-"""Document ingestion and semantic chunking engine."""
+"""Document ingestion, semantic chunking, and vector database persistence engine."""
 
 import re
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import yaml
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from src.config import get_settings
+from src.vector_store import OpsVectorStore, get_embedding_model
 
 # Path to runbooks directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -54,7 +59,7 @@ def load_runbook_documents(runbooks_dir: Path = DEFAULT_RUNBOOKS_DIR) -> list[Do
             **frontmatter_meta,
         }
 
-        # Normalize any nested list/dict metadata fields to string representation for Chroma compatibility
+        # Normalize any nested list/dict metadata fields to string representation for store compatibility
         sanitized_meta = {}
         for k, v in metadata.items():
             if isinstance(v, (list, dict)):
@@ -91,37 +96,61 @@ def chunk_documents(
     return chunks
 
 
+def ingest_to_vector_store(
+    documents: Optional[list[Document]] = None,
+    persist_dir: Optional[str] = None,
+    embedding_model: Optional[Embeddings] = None,
+) -> tuple[OpsVectorStore, float]:
+    """Ingest document chunks into persistent vector store with execution timing."""
+    settings = get_settings()
+    target_dir = persist_dir or settings.chroma_persist_dir
+    embeddings = embedding_model or get_embedding_model()
+
+    if documents is None:
+        raw_docs = load_runbook_documents()
+        documents = chunk_documents(raw_docs)
+
+    start_time = time.perf_counter()
+    vector_store = OpsVectorStore.from_documents(
+        documents=documents,
+        embedding=embeddings,
+        persist_dir=target_dir,
+    )
+    duration = time.perf_counter() - start_time
+
+    return vector_store, duration
+
+
 if __name__ == "__main__":
     print("=" * 70)
-    print("OPSCOPILOT DAY 3: INGESTION & CHUNKING ENGINE")
+    print("OPSCOPILOT DAY 4: VECTOR EMBEDDING & DATABASE PERSISTENCE")
     print("=" * 70)
 
     # 1. Load documents
     raw_docs = load_runbook_documents()
-    print(f"\n[LOAD] Successfully loaded {len(raw_docs)} runbook document(s):")
+    print(f"\n[LOAD] Loaded {len(raw_docs)} runbook document(s):")
     for doc in raw_docs:
         title = doc.metadata.get("title", "Untitled")
-        print(f"  - {doc.metadata['filename']} | Title: '{title}' ({len(doc.page_content)} chars)")
+        print(f"  - {doc.metadata['filename']} | '{title}' ({len(doc.page_content)} chars)")
 
     # 2. Chunk documents
     chunks = chunk_documents(raw_docs, chunk_size=800, chunk_overlap=120)
     print(f"\n[SPLIT] Generated {len(chunks)} total chunk(s) (chunk_size=800, chunk_overlap=120)")
 
-    # 3. Inspect sample chunks
-    samples_to_inspect = min(2, len(chunks))
-    for i in range(samples_to_inspect):
-        sample = chunks[i]
-        print("\n" + "-" * 70)
-        print(f"SAMPLE CHUNK #{i + 1}")
-        print("-" * 70)
-        print(f"Metadata:")
-        for k, v in sample.metadata.items():
-            print(f"  * {k}: {v}")
-        print("\nContent Preview (first 250 characters):")
-        preview = sample.page_content[:250].strip().replace("\n", " ")
-        print(f"  \"{preview}...\"")
-        print(f"Total Chunk Character Length: {len(sample.page_content)}")
+    # 3. Vector Embeddings & Persistence
+    settings = get_settings()
+    print(f"\n[EMBED & PERSIST] Saving embeddings to '{settings.chroma_persist_dir}'...")
+    store, elapsed = ingest_to_vector_store(chunks)
+
+    print(f"  -> Successfully persisted {store.count()} chunks in {elapsed:.3f} seconds!")
+    print(f"  -> Database file located at: {store.db_path.resolve()}")
+
+    # 4. Verify disk persistence files
+    db_files = list(Path(settings.chroma_persist_dir).glob("*"))
+    print(f"\n[DISK VERIFICATION] Files in persistent directory:")
+    for f in db_files:
+        print(f"  * {f.name} ({f.stat().st_size:,} bytes)")
 
     print("\n" + "=" * 70)
-    print("[SUCCESS] Ingestion & chunking engine validated cleanly!")
+    print("[SUCCESS] Day 4 vector embedding & database persistence complete!")
     print("=" * 70)

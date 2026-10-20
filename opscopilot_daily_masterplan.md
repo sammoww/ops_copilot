@@ -142,9 +142,9 @@ Extend src/ingest.py to take the generated chunks, embed them using OpenAIEmbedd
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** What is an embedding in mathematical terms? (Dimensions, dense vector representation).
-* [ ] **Q2:** Why did we choose `text-embedding-3-small` over `text-embedding-ada-002` or self-hosted HuggingFace models? (Trade-offs: cost, dimensionality, latency).
-* [ ] **Q3:** What does "persisting" a vector database mean, and why should this step happen offline rather than on every user query?
+* [x] **Q1:** What is an embedding in mathematical terms? (Dimensions, dense vector representation).
+* [x] **Q2:** Why did we choose `text-embedding-3-small` over `text-embedding-ada-002` or self-hosted HuggingFace models? (Trade-offs: cost, dimensionality, latency).
+* [x] **Q3:** What does "persisting" a vector database mean, and why should this step happen offline rather than on every user query?
 
 ---
 
