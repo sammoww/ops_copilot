@@ -160,9 +160,9 @@ Extend src/ingest.py to take the generated chunks, embed them using OpenAIEmbedd
 5. Print: Distance score, Source file name, and Chunk preview.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** What distance metric does ChromaDB use by default (Cosine similarity vs L2 Euclidean distance)?
-* [ ] **Q2:** If a user searches for gibberish like *"xyz123abc"*, does semantic search still return documents? Why?
-* [ ] **Q3:** What is a "relevance threshold" filter, and why is it needed to stop irrelevant documents from entering the prompt?
+* [x] **Q1:** What distance metric does ChromaDB use by default (Cosine similarity vs L2 Euclidean distance)?
+* [x] **Q2:** If a user searches for gibberish like *"xyz123abc"*, does semantic search still return documents? Why?
+* [x] **Q3:** What is a "relevance threshold" filter, and why is it needed to stop irrelevant documents from entering the prompt?
 
 ---
 
