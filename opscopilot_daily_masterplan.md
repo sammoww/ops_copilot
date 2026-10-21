@@ -213,9 +213,9 @@ Write src/rag_chain.py using modern LCEL syntax. Initialize ChatOpenAI(model="gp
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why is `temperature=0.0` critical for enterprise runbook QA?
-* [ ] **Q2:** Explain the LCEL pipeline syntax (`|`) and how data flows from input dict to output string.
-* [ ] **Q3:** Why use `gpt-4o-mini` instead of the full `gpt-4o` for this use case? (Latency vs cost vs reasoning capability).
+* [x] **Q1:** Why is `temperature=0.0` critical for enterprise runbook QA?
+* [x] **Q2:** Explain the LCEL pipeline syntax (`|`) and how data flows from input dict to output string.
+* [x] **Q3:** Why use `gpt-4o-mini` instead of the full `gpt-4o` for this use case? (Latency vs cost vs reasoning capability).
 
 ---
 
