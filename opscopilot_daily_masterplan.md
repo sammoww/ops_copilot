@@ -190,9 +190,9 @@ Create a Python file src/prompts.py containing a LangChain ChatPromptTemplate de
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why do LLMs hallucinate even when instructed not to?
-* [ ] **Q2:** How does few-shot prompting or negative constraints (what *not* to do) help keep the model grounded?
-* [ ] **Q3:** If an internal runbook contains outdated information, who is responsible: the prompt, the model, or the ingestion pipeline?
+* [x] **Q1:** Why do LLMs hallucinate even when instructed not to?
+* [x] **Q2:** How does few-shot prompting or negative constraints (what *not* to do) help keep the model grounded?
+* [x] **Q3:** If an internal runbook contains outdated information, who is responsible: the prompt, the model, or the ingestion pipeline?
 
 ---
 

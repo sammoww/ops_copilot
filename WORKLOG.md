@@ -365,6 +365,75 @@ Document metrics measured directly:
     2. **Refusal Guardrail**: With a threshold filter, out-of-domain queries return **0 chunks**. The LLM prompt can then deterministically trigger the refusal response: *"I cannot find instructions for this question in the provided runbooks."*
     3. **Token & Cost Efficiency**: Prevents polluting the prompt context with low-confidence noise that distracts the model and increases token costs.
 
+---
+
+## 2026-10-21 — Day 6: Prompt Engineering for Zero Hallucination
+
+### 1. What Was Done
+- Respected the strict Day 6 boundary: **focused purely on prompt engineering, templates, and constraints** without piping to live LLM or API endpoints.
+- Implemented `src/prompts.py`:
+  - `ChatPromptTemplate` accepting exactly two variables: `context` and `question`.
+  - Embedded 5 critical production operational rules:
+    1. **Strict Grounding**: Relies solely on provided runbook context; forbids external knowledge.
+    2. **Deterministic Refusal Guardrail**: Exact standardized refusal string when context is insufficient: `"I cannot find the answer in the provided runbooks."`
+    3. **Mandatory Inline Citations**: Explicit bracketed format requirement: `[Source: <filename>, Section: <header>]`.
+    4. **Destructive Command Warnings**: Safety checks before executing topology/failover changes.
+    5. **Conciseness & Clarity**: Numbered operational triage steps.
+- Built automated test suite in `tests/test_prompts.py`:
+  - Verified input variables (`{"context", "question"}`).
+  - Verified system and human prompt formatting.
+  - Verified refusal phrase embedding.
+- Checkpointed in full project test suite (**19 passed in 2.74s**).
+
+### 2. What Worked
+- Clean prompt composition using LangChain's `ChatPromptTemplate`.
+- Standardized refusal phrase ready for automated evaluation on Day 8.
+
+### 3. What Failed & Why
+- Initial formatting call had a collision with `{refusal_phrase}` template variable during nested string formatting; resolved cleanly using pre-formatted f-strings.
+
+### 4. Verification Results
+- **Direct CLI Execution**:
+  ```text
+  python -m src.prompts
+  [SUCCESS] Zero-hallucination prompt template configured cleanly!
+  Standardized Refusal Phrase: "I cannot find the answer in the provided runbooks."
+  ```
+- **Automated Tests**:
+  ```text
+  pytest tests/test_prompts.py -v
+  3 passed in 0.28s
+  ```
+- **Full Test Suite**:
+  ```text
+  pytest -v
+  19 passed in 2.74s
+  ```
+
+### 5. Day 6 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why do LLMs hallucinate even when instructed not to?
+- **Answer**:
+  - **Autoregressive Probability vs Factual Memory**: LLMs are statistical next-token prediction engines, not relational databases. They generate responses by maximizing conditional probability $P(w_t \mid w_{<t})$ over training weights. The model has an innate mathematical bias toward fluency and plausibility rather than ground truth.
+  - **Attention Drift & Sycophancy**: Under long contexts or complex questions, attention heads can bleed between the provided context and the millions of pre-trained parameters in the model's weights. If the prompt asks a leading question, the model will prioritize being helpful or fluent over admitting lack of knowledge.
+  - **Negative Constraint Blindness**: Standard instruction fine-tuning teaches models what *to* say. Simply telling a model *"Do not hallucinate"* is notoriously ineffective without an explicit, deterministic fallback path ("If X is missing, reply with exact string Y").
+
+#### Q2: How does few-shot prompting or negative constraints (what *not* to do) help keep the model grounded?
+- **Answer**:
+  - **Negative Constraints (Boundaries)**: Explicitly defining what *not* to do (e.g. *"Do NOT use outside knowledge", "Do NOT guess"*) reduces the search space of acceptable next tokens, heavily penalizing tokens derived from pre-trained generic knowledge.
+  - **Deterministic Exit Route**: Providing an exact fallback phrase (`"I cannot find the answer in the provided runbooks."`) gives the model a zero-risk token path when context similarity is low.
+  - **Few-Shot Grounding Examples**: Providing concrete examples of refusal vs. grounded citation demonstrates the exact format, syntax, and boundaries expected, aligning the model's in-context attention before processing the user query.
+
+#### Q3: If an internal runbook contains outdated information, who is responsible: the prompt, the model, or the ingestion pipeline?
+- **Answer**:
+  - **The Ingestion Pipeline & Data Governance**:
+    - The **Model** and **Prompt** are doing their job correctly: if the prompt demands strict grounding, and the model faithfully regurgitates the provided runbook text with correct citations, the AI layer has zero errors.
+    - The failure belongs squarely to the **Ingestion Pipeline and Data Lifecycle Policy**:
+      1. Lack of **document freshness checks** or cache invalidation (stale chunks were not pruned or updated upon runbook revision).
+      2. Lack of **metadata filtering** (`last_updated < threshold` or `version_tag != 'v3'`).
+      3. Lack of automated sync between the team's live documentation repository (e.g., Confluence / GitHub Markdown) and the vector store.
+
+
 
 
 
