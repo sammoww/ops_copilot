@@ -17,6 +17,7 @@ htmlcov/
 
 # Local Vector Database & Data Artifacts
 chroma_db/
+test_chroma/
 *.sqlite3
 
 # IDE & OS files

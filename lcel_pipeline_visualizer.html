@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpsCopilot — LCEL Interactive Pipeline Visualizer</title>
+  <style>
+    :root {
+      --bg: #030712;
+      --panel-bg: #0b1120;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.25);
+      --emerald: #34d399;
+      --emerald-glow: rgba(52, 211, 153, 0.25);
+      --amber: #fbbf24;
+      --purple: #a855f7;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --code-bg: #020617;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+    }
+
+    /* Fixed Viewport Flex Container */
+    .app-viewport {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      padding: 10px 14px;
+      gap: 8px;
+    }
+
+    /* 1. Slim Top Bar (~46px) */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 6px 14px;
+      flex-shrink: 0;
+      height: 46px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 14px;
+      color: #fff;
+    }
+
+    .brand-title {
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--cyan);
+      font-weight: 600;
+      margin-left: 4px;
+    }
+
+    .tab-pills {
+      display: flex;
+      gap: 4px;
+      background: var(--bg);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+    }
+
+    .tab-pill {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tab-pill:hover { color: #fff; }
+    .tab-pill.active {
+      background: var(--card-bg);
+      color: var(--cyan);
+      border: 1px solid var(--cyan-glow);
+    }
+
+    .status-tags {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+    }
+    .tag.green { border-color: rgba(52, 211, 153, 0.4); color: var(--emerald); }
+
+    /* 2. Scenario & Flow Ribbon (~54px) */
+    .ribbon-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 6px 14px;
+      flex-shrink: 0;
+      gap: 12px;
+      height: 52px;
+    }
+
+    .scenario-picker {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .scenario-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .scen-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .scen-btn:hover { border-color: var(--cyan); }
+    .scen-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    .transport-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-play {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      box-shadow: 0 0 10px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-step {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .btn-step:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-step:hover:not(:disabled) { border-color: var(--text-muted); }
+
+    /* 3. Horizontal Pipeline Step Track (~58px) */
+    .pipeline-track {
+      display: flex;
+      align-items: center;
+      background: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 6px 12px;
+      flex-shrink: 0;
+      gap: 6px;
+      height: 58px;
+    }
+
+    .track-node {
+      flex: 1;
+      height: 44px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+      padding: 2px 4px;
+    }
+
+    .track-node:hover {
+      border-color: var(--cyan);
+      background: #1e293b;
+    }
+
+    .track-node.active {
+      background: linear-gradient(180deg, #1e293b, #0f172a);
+      border-color: var(--cyan);
+      box-shadow: 0 0 14px var(--cyan-glow);
+    }
+
+    .track-node.completed {
+      border-color: var(--emerald);
+    }
+
+    .node-num {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .track-node.active .node-num { color: var(--cyan); }
+    .track-node.completed .node-num { color: var(--emerald); }
+
+    .node-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .track-pipe {
+      font-family: var(--font-mono);
+      font-weight: 900;
+      font-size: 12px;
+      color: var(--cyan);
+      padding: 0 2px;
+    }
+
+    /* 4. Main 3-Column Studio Dashboard (Fills remaining 100vh height) */
+    .studio-dashboard {
+      flex: 1;
+      min-height: 0; /* Critical for internal flex/grid scroll */
+      display: grid;
+      grid-template-columns: 340px 1fr 1fr;
+      gap: 8px;
+    }
+
+    .studio-pane {
+      background: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .pane-header {
+      background: #0d1527;
+      border-bottom: 1px solid var(--card-border);
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      height: 36px;
+    }
+
+    .pane-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pane-title.stage { color: var(--cyan); }
+    .pane-title.in { color: var(--amber); }
+    .pane-title.out { color: var(--emerald); }
+
+    .pane-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: var(--bg);
+      border: 1px solid var(--card-border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    .pane-body {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Left Studio Pane (Stage Info & Code) */
+    .stage-title-main {
+      font-size: 14px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .stage-desc {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+      background: rgba(56, 189, 248, 0.06);
+      border-left: 3px solid var(--cyan);
+      padding: 8px 10px;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .code-box {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--cyan);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .type-transition-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    .type-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .type-val {
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+
+    /* Data Pre Viewers */
+    .code-viewer {
+      flex: 1;
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: #e5e7eb;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 0;
+    }
+
+    /* Live Response Highlight Box */
+    .response-preview-box {
+      background: rgba(52, 211, 153, 0.08);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #f3f4f6;
+      flex-shrink: 0;
+    }
+
+    .response-header {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--emerald);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .btn-copy-mini {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      border-radius: 4px;
+      font-size: 9px;
+      padding: 1px 6px;
+      cursor: pointer;
+    }
+    .btn-copy-mini:hover { color: #fff; border-color: var(--emerald); }
+
+    /* Other Tabs: Fill the same viewport area cleanly */
+    .alt-tab-view {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      background: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .alt-tab-view.active { display: block; }
+
+    .diff-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      height: 100%;
+    }
+
+    .diff-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .diff-card pre {
+      flex: 1;
+      padding: 12px;
+      background: #020617;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: #e5e7eb;
+      overflow-y: auto;
+    }
+
+    .qa-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .qa-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 6px;
+    }
+    .qa-text {
+      font-size: 12px;
+      color: #d1d5db;
+      line-height: 1.5;
+    }
+    .qa-code {
+      background: var(--code-bg);
+      border-left: 2px solid var(--cyan);
+      padding: 6px 8px;
+      margin: 6px 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #fff;
+    }
+
+    /* Mini Toast */
+    .mini-toast {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: var(--emerald);
+      color: #020617;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .mini-toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div class="app-viewport">
+
+    <!-- 1. Top Navbar (~46px) -->
+    <div class="top-bar">
+      <div class="brand">
+        <div class="brand-logo">⚡</div>
+        <div>
+          <span class="brand-title">OpsCopilot</span>
+          <span class="brand-subtitle">LCEL Studio</span>
+        </div>
+      </div>
+
+      <div class="tab-pills">
+        <button class="tab-pill active" onclick="switchView('visualizer')">1. Pipeline Studio</button>
+        <button class="tab-pill" onclick="switchView('comparison')">2. Spaghetti vs LCEL</button>
+        <button class="tab-pill" onclick="switchView('defense')">3. Interview Q&A</button>
+      </div>
+
+      <div class="status-tags">
+        <span class="tag">k=3 Chunks</span>
+        <span class="tag">GPT-4o-mini / Mock</span>
+        <span class="tag green">✓ Refusal Guardrail</span>
+      </div>
+    </div>
+
+    <!-- 2. Scenario & Playback Ribbon (~52px) -->
+    <div class="ribbon-bar">
+      <div class="scenario-picker">
+        <span class="scenario-label">Incident:</span>
+        <button class="scen-btn active" id="scen-0" onclick="selectScenario(0)">🗄️ PostgreSQL Failover</button>
+        <button class="scen-btn" id="scen-1" onclick="selectScenario(1)">💳 SLA Credit Matrix</button>
+        <button class="scen-btn" id="scen-2" onclick="selectScenario(2)">🔑 SCIM Break-Glass</button>
+        <button class="scen-btn" id="scen-3" onclick="selectScenario(3)">🚫 Lasagna Refusal</button>
+      </div>
+
+      <div class="transport-controls">
+        <button class="btn-play" id="play-btn" onclick="togglePlay()">
+          <span id="play-icon">▶</span> <span id="play-text">Auto Run</span>
+        </button>
+        <button class="btn-step" id="prev-btn" onclick="prevStep()" disabled>← Back</button>
+        <button class="btn-step" id="next-btn" onclick="nextStep()">Next (Pipe |) →</button>
+        <button class="btn-step" onclick="resetPipeline()">↺ Reset</button>
+      </div>
+    </div>
+
+    <!-- 3. Horizontal Pipeline Step Track (~58px) -->
+    <div class="pipeline-track">
+      <div class="track-node active" id="t-node-0" onclick="goToStep(0)">
+        <span class="node-num">01. INGESTION</span>
+        <span class="node-label">User Query</span>
+      </div>
+      <span class="track-pipe">➔</span>
+
+      <div class="track-node" id="t-node-1" onclick="goToStep(1)">
+        <span class="node-num">02. RETRIEVAL</span>
+        <span class="node-label">Vector Store</span>
+      </div>
+      <span class="track-pipe">➔</span>
+
+      <div class="track-node" id="t-node-2" onclick="goToStep(2)">
+        <span class="node-num">03. MAPPER</span>
+        <span class="node-label">format_docs()</span>
+      </div>
+      <span class="track-pipe">|</span>
+
+      <div class="track-node" id="t-node-3" onclick="goToStep(3)">
+        <span class="node-num">04. PROMPT</span>
+        <span class="node-label">RAG_PROMPT</span>
+      </div>
+      <span class="track-pipe">|</span>
+
+      <div class="track-node" id="t-node-4" onclick="goToStep(4)">
+        <span class="node-num">05. INFERENCE</span>
+        <span class="node-label">llm (ChatOpenAI)</span>
+      </div>
+      <span class="track-pipe">|</span>
+
+      <div class="track-node" id="t-node-5" onclick="goToStep(5)">
+        <span class="node-num">06. PARSER</span>
+        <span class="node-label">StrOutputParser</span>
+      </div>
+    </div>
+
+    <!-- 4. VIEW 1: Main 3-Column Studio Dashboard (Zero Window Scroll) -->
+    <div class="studio-dashboard" id="view-visualizer">
+
+      <!-- Column 1: Step Context & Python Code -->
+      <div class="studio-pane">
+        <div class="pane-header">
+          <span class="pane-title stage"><span>🔍</span> Stage Blueprint</span>
+          <span class="pane-badge" id="blueprint-step-tag">Step 1 of 6</span>
+        </div>
+        <div class="pane-body">
+          <div class="stage-title-main" id="stage-title-text">0. User Incident Question Ingestion</div>
+          <div class="stage-desc" id="stage-desc-text">
+            Incident engineer inputs query into OpsCopilot. Plain string input.
+          </div>
+
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+            LangChain LCEL Component:
+          </div>
+          <div class="code-box" id="stage-code-text">answer_question("...")</div>
+
+          <div class="type-transition-box">
+            <div class="type-row">
+              <span style="color: var(--amber);">Incoming Data Type:</span>
+              <span class="type-val" id="type-in-val" style="color: var(--amber);">str</span>
+            </div>
+            <div class="type-row">
+              <span style="color: var(--cyan);">LCEL Pipe Operator:</span>
+              <span class="type-val" id="type-op-val" style="color: var(--cyan);">invoke()</span>
+            </div>
+            <div class="type-row">
+              <span style="color: var(--emerald);">Outgoing Data Type:</span>
+              <span class="type-val" id="type-out-val" style="color: var(--emerald);">str</span>
+            </div>
+          </div>
+
+          <div class="response-preview-box" id="final-preview-container" style="display: none;">
+            <div class="response-header">
+              <span>✓ Verified Final Response</span>
+              <button class="btn-copy-mini" onclick="copyResult()">Copy</button>
+            </div>
+            <div id="final-preview-text">...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 2: Data IN (Left of Pipe) -->
+      <div class="studio-pane">
+        <div class="pane-header">
+          <span class="pane-title in"><span>📥</span> Data Received (Left of Pipe)</span>
+          <span class="pane-badge" id="data-in-badge">Type: str</span>
+        </div>
+        <div class="pane-body">
+          <pre class="code-viewer" id="data-in-viewer">...</pre>
+        </div>
+      </div>
+
+      <!-- Column 3: Data OUT (Right of Pipe) -->
+      <div class="studio-pane">
+        <div class="pane-header">
+          <span class="pane-title out"><span>📤</span> Transformed Result (Right of Pipe)</span>
+          <span class="pane-badge" id="data-out-badge">Type: str</span>
+        </div>
+        <div class="pane-body">
+          <pre class="code-viewer" id="data-out-viewer">...</pre>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW 2: Comparison Tab -->
+    <div class="alt-tab-view" id="view-comparison">
+      <div class="diff-grid">
+        <div class="diff-card">
+          <div style="background: rgba(251, 113, 133, 0.15); border-bottom: 1px solid rgba(251, 113, 133, 0.3); padding: 8px 12px; font-weight: 700; color: #fb7185; font-size: 12px;">
+            ❌ Legacy Procedural Python (34 Lines, Blocking, No Streaming)
+          </div>
+          <pre><code>def answer_question_legacy(question: str):
+    # 1. Manual retriever call
+    docs = vector_store.similarity_search(question, k=3)
+    
+    # 2. Manual string concatenation
+    context_str = ""
+    for d in docs:
+        context_str += f"[{d.metadata['filename']}]\n{d.page_content}\n\n"
+    
+    # 3. Manual prompt dictionary construction
+    prompt_inputs = {"context": context_str, "question": question}
+    
+    # 4. Manual prompt template rendering
+    messages = prompt_template.format_messages(**prompt_inputs)
+    
+    # 5. Blocking LLM invocation (Cannot stream tokens!)
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages
+    )
+    return response.choices[0].message.content
+
+# ⚠️ Fails senior interviews: No async parity, no token streaming, no LangSmith tracing.</code></pre>
+        </div>
+
+        <div class="diff-card">
+          <div style="background: rgba(52, 211, 153, 0.15); border-bottom: 1px solid rgba(52, 211, 153, 0.3); padding: 8px 12px; font-weight: 700; color: var(--emerald); font-size: 12px;">
+            ✅ Production LCEL Chain (5 Lines, Streamable, Observable)
+          </div>
+          <pre><code>rag_chain_from_docs = (
+    {
+        "context": lambda x: format_docs(x["documents"]),
+        "question": lambda x: x["question"],
+    }
+    | RAG_PROMPT
+    | llm
+    | StrOutputParser()
+)
+
+# 🚀 Enterprise Superpowers:
+# 1. Token Streaming: rag_chain.stream({"question": q, "documents": docs})
+# 2. Async Parity:    await rag_chain.ainvoke(...)
+# 3. Batching:        rag_chain.batch([...])
+# 4. Observability:   Automatic telemetry spans to LangSmith!</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: Defense Q&A Tab -->
+    <div class="alt-tab-view" id="view-defense">
+      <div class="qa-box">
+        <div class="qa-title">Q1: What is LCEL and why do production teams use it?</div>
+        <div class="qa-text">
+          LCEL (LangChain Expression Language) is a declarative syntax for composing modular cognitive chains using Python's bitwise OR operator (<code>|</code>). It standardizes every component into the <code>Runnable</code> interface, giving streaming, async parity, batching, and LangSmith tracing out of the box with zero boilerplate.
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-title">Q2: How does the pipe <code>|</code> operator work under the hood in Python?</div>
+        <div class="qa-text">
+          In Python, <code>A | B</code> invokes the magic method <code>A.__or__(B)</code>. In LangChain, the <code>Runnable</code> base class overrides <code>__or__</code> to return a <code>RunnableSequence</code>, wiring the output of component A directly as input to component B.
+        </div>
+        <div class="qa-code">class Runnable:<br>&nbsp;&nbsp;&nbsp;&nbsp;def __or__(self, other):<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return RunnableSequence(first=self, middle=[], last=other)</div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-title">Q3: Why separate <code>format_docs</code> from retrieval?</div>
+        <div class="qa-text">
+          Separation of concerns. The vector store's job is purely semantic retrieval (returning structured <code>List[Document]</code> objects with metadata). Downstream tasks (FastAPI schemas, citation buttons, Ragas evaluations) need raw metadata. If the vector store returned a raw string, all structured metadata would be lost!
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mini-toast" id="toast">Copied to clipboard!</div>
+
+  <script>
+    const scenarios = [
+      {
+        id: 0,
+        name: "PostgreSQL Failover",
+        question: "How do I promote the PostgreSQL replica?",
+        retrievedDocs: [
+          {
+            content: "4.2 Promote Synchronous Replica:\nLog into pg-replica-02.internal and run:\n/usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main\nConfirm node is writing by checking pg_is_in_recovery() returns false.",
+            metadata: { filename: "database_failover_runbook.md", section: "4.2 Promote Synchronous Replica", id: "DOC-DB-001" }
+          },
+          {
+            content: "4.3 Switch PgBouncer Routing:\nUpdate PgBouncer upstream host config:\nsed -i 's/10.0.12.10/10.0.12.44/' /etc/pgbouncer/pgbouncer.ini\nReload configuration: pgbouncer -R -u postgres",
+            metadata: { filename: "database_failover_runbook.md", section: "4.3 Switch PgBouncer", id: "DOC-DB-002" }
+          }
+        ],
+        formattedContext: `[Source: database_failover_runbook.md, Section: 4.2 Promote Synchronous Replica, ID: DOC-DB-001]
+4.2 Promote Synchronous Replica:
+Log into pg-replica-02.internal and run:
+/usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main
+Confirm node is writing by checking pg_is_in_recovery() returns false.
+
+---
+
+[Source: database_failover_runbook.md, Section: 4.3 Switch PgBouncer, ID: DOC-DB-002]
+4.3 Switch PgBouncer Routing:
+Update PgBouncer upstream host config:
+sed -i 's/10.0.12.10/10.0.12.44/' /etc/pgbouncer/pgbouncer.ini
+Reload configuration: pgbouncer -R -u postgres`,
+        llmResponse: `Based on the verified runbooks, here are the operational steps:
+
+1. Isolate the degraded primary to avoid split-brain conditions [Source: database_failover_runbook.md, Section: 4.1 Isolate Primary].
+2. Execute replica promotion command: /usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main [Source: database_failover_runbook.md, Section: 4.2 Promote Synchronous Replica].
+3. Update PgBouncer upstream routing configuration to point to the new primary node [Source: database_failover_runbook.md, Section: 4.3 Switch PgBouncer].`
+      },
+      {
+        id: 1,
+        name: "SLA Credit Matrix",
+        question: "What refund percentage is given for 99.2% uptime and who approves it?",
+        retrievedDocs: [
+          {
+            content: "Section 2 SLA Credit Compensation Grid:\n- Monthly Uptime 99.50% - 99.89%: 25% credit\n- Monthly Uptime 99.00% - 99.49%: 50% credit\n- Monthly Uptime < 99.00%: 100% credit",
+            metadata: { filename: "refund_policy_enterprise.md", section: "2 SLA Credit Grid", id: "DOC-SLA-001" }
+          },
+          {
+            content: "Section 3 Escalation Matrix:\n- Claims < $5,000: Support Lead approval\n- Claims $5,000 - $24,999: Director of Customer Operations\n- Claims >= $25,000: VP Customer Success & Finance sign-off",
+            metadata: { filename: "refund_policy_enterprise.md", section: "3 Escalation Matrix", id: "DOC-SLA-002" }
+          }
+        ],
+        formattedContext: `[Source: refund_policy_enterprise.md, Section: 2 SLA Credit Grid, ID: DOC-SLA-001]
+Section 2 SLA Credit Compensation Grid:
+- Monthly Uptime 99.50% - 99.89%: 25% credit
+- Monthly Uptime 99.00% - 99.49%: 50% credit
+- Monthly Uptime < 99.00%: 100% credit
+
+---
+
+[Source: refund_policy_enterprise.md, Section: 3 Escalation Matrix, ID: DOC-SLA-002]
+Section 3 Escalation Matrix:
+- Claims < $5,000: Support Lead approval
+- Claims $5,000 - $24,999: Director of Customer Operations
+- Claims >= $25,000: VP Customer Success & Finance sign-off`,
+        llmResponse: `Based on the verified runbooks, here are the operational steps:
+
+1. Verify account status and validate synthetic downtime duration against Datadog monitors [Source: refund_policy_enterprise.md, Section: 4.1 Claim Ingestion].
+2. Compute credit percentage against SLA uptime compensation grid: 99.20% uptime falls in the 99.00%-99.49% bucket, entitling the customer to a 50% service credit [Source: refund_policy_enterprise.md, Section: 2 SLA Credit Grid].
+3. Obtain appropriate approval based on credit amount: Claims under $5,000 require Support Lead, $5,000-$24,999 require Director of Operations, and >= $25,000 require VP & Finance sign-off [Source: refund_policy_enterprise.md, Section: 3 Escalation Matrix].`
+      },
+      {
+        id: 2,
+        name: "SCIM Break-Glass",
+        question: "How do I trigger break-glass credentials if Okta SSO is down?",
+        retrievedDocs: [
+          {
+            content: "Section 4 Break-Glass Emergency Protocol:\nIn P0/P1 emergency where SSO/IdP is unreachable:\n1. 2-person quorum required (1 Principal SRE + 1 Engineering Director).\n2. Request emergency token from AWS Secrets Manager / CyberArk.\n3. Master break-glass token expires automatically after 4 hours.",
+            metadata: { filename: "user_provisioning_sop.md", section: "4 Break-Glass Protocol", id: "DOC-IAM-001" }
+          }
+        ],
+        formattedContext: `[Source: user_provisioning_sop.md, Section: 4 Break-Glass Protocol, ID: DOC-IAM-001]
+Section 4 Break-Glass Emergency Protocol:
+In P0/P1 emergency where SSO/IdP is unreachable:
+1. 2-person quorum required (1 Principal SRE + 1 Engineering Director).
+2. Request emergency token from AWS Secrets Manager / CyberArk.
+3. Master break-glass token expires automatically after 4 hours.`,
+        llmResponse: `Based on the verified runbooks, here are the operational steps:
+
+1. In P0/P1 emergency where SSO is unreachable, engage a mandatory 2-person quorum (1 Principal SRE + 1 Engineering Director) [Source: user_provisioning_sop.md, Section: 4 Break-Glass Protocol].
+2. Retrieve emergency break-glass token from AWS Secrets Manager / CyberArk [Source: user_provisioning_sop.md, Section: 4 Break-Glass Protocol].
+3. Be aware that the break-glass session has a hard expiration of 4 hours and triggers automatic audit logging to Security SIEM [Source: user_provisioning_sop.md, Section: 4 Break-Glass Protocol].`
+      },
+      {
+        id: 3,
+        name: "Lasagna Refusal",
+        question: "How do I bake traditional Italian lasagna with béchamel sauce?",
+        retrievedDocs: [
+          {
+            content: "Section 1.1 Scope & Prerequisites: This runbook covers infrastructure recovery for high-availability database failover across multi-zone Kubernetes deployments.",
+            metadata: { filename: "database_failover_runbook.md", section: "1.1 Scope", id: "DOC-DB-000" }
+          }
+        ],
+        formattedContext: `[Source: database_failover_runbook.md, Section: 1.1 Scope, ID: DOC-DB-000]
+Section 1.1 Scope & Prerequisites: This runbook covers infrastructure recovery for high-availability database failover across multi-zone Kubernetes deployments.`,
+        llmResponse: `I cannot find the answer in the provided runbooks.`
+      }
+    ];
+
+    let currentScenario = 0;
+    let currentStep = 0;
+    let autoPlayInterval = null;
+
+    function getStepDetails(stepIdx, scen) {
+      switch(stepIdx) {
+        case 0:
+          return {
+            title: "0. User Incident Question Ingestion",
+            desc: "The on-call SRE issues a query. In our Python codebase, this enters through answer_question(query).",
+            code: `query = "${scen.question}"`,
+            inType: "str",
+            op: "Entrypoint",
+            outType: "str",
+            inData: `"${scen.question}"`,
+            outData: `"${scen.question}"`,
+            showPreview: false
+          };
+        case 1:
+          return {
+            title: "1. Vector Similarity Search (Retriever)",
+            desc: "The vector store compares the query vector against our 23 indexed runbook chunks using cosine similarity.",
+            code: `retriever = vector_store.as_retriever(search_kwargs={"k": 3})\ndocs = retriever.invoke(query)`,
+            inType: "str",
+            op: "retriever.invoke()",
+            outType: "list[Document]",
+            inData: `Query: "${scen.question}"\nk: 2`,
+            outData: JSON.stringify(scen.retrievedDocs, null, 2),
+            showPreview: false
+          };
+        case 2:
+          return {
+            title: "2. Dictionary Mapping & format_docs()",
+            desc: "Transforms raw LangChain Document objects into a single clean string with [Source: filename] headers.",
+            code: `{\n  "context": lambda x: format_docs(x["documents"]),\n  "question": lambda x: x["question"]\n}`,
+            inType: "dict{'question', 'docs'}",
+            op: "RunnableParallel",
+            outType: "dict{'context', 'question'}",
+            inData: `{\n  "question": "${scen.question}",\n  "documents": [Document(id=1), Document(id=2)]\n}`,
+            outData: `{\n  "context": """${scen.formattedContext.replace(/"/g, '\\"')}""",\n  "question": "${scen.question}"\n}`,
+            showPreview: false
+          };
+        case 3:
+          return {
+            title: "3. Pipe into RAG_PROMPT (| RAG_PROMPT)",
+            desc: "Injects context and zero-hallucination guardrails into ChatPromptTemplate producing structured chat messages.",
+            code: `... | RAG_PROMPT`,
+            inType: "dict{'context', 'question'}",
+            op: "ChatPromptTemplate",
+            outType: "ChatPromptValue",
+            inData: `{\n  "context": "[Source: ...]",\n  "question": "${scen.question}"\n}`,
+            outData: `[
+  SystemMessage(content="You are OpsCopilot... STRICT RULES: 1. Grounding 2. Refusal Guardrail 3. Mandatory Citations..."),
+  HumanMessage(content="ENGINEER QUESTION: ${scen.question}")
+]`,
+            showPreview: false
+          };
+        case 4:
+          return {
+            title: "4. Pipe into LLM Inference (| llm)",
+            desc: "Sends messages to GPT-4o-mini (temperature=0.0) or MockGroundedChatModel. Returns AIMessage with metadata.",
+            code: `... | llm  # ChatOpenAI(model="gpt-4o-mini", temperature=0.0)`,
+            inType: "ChatPromptValue",
+            op: "BaseChatModel",
+            outType: "AIMessage",
+            inData: `[SystemMessage(rules + context), HumanMessage("${scen.question}")]`,
+            outData: `AIMessage(
+  content="""${scen.llmResponse}""",
+  response_metadata={"token_usage": {"total": ${scen.id === 3 ? 132 : 463}}, "model": "gpt-4o-mini"}
+)`,
+            showPreview: false
+          };
+        case 5:
+          return {
+            title: "5. Pipe into StrOutputParser (| StrOutputParser())",
+            desc: "Unwraps the AIMessage wrapper and yields a clean, verified string ready for CLI / FastAPI / Streamlit.",
+            code: `... | StrOutputParser()`,
+            inType: "AIMessage",
+            op: "StrOutputParser",
+            outType: "str (Final Clean Output)",
+            inData: `AIMessage(content="...", response_metadata={...})`,
+            outData: scen.llmResponse,
+            showPreview: true
+          };
+      }
+    }
+
+    function render() {
+      const scen = scenarios[currentScenario];
+      const data = getStepDetails(currentStep, scen);
+
+      // Blueprint panel
+      document.getElementById("blueprint-step-tag").innerText = `Step ${currentStep + 1} of 6`;
+      document.getElementById("stage-title-text").innerText = data.title;
+      document.getElementById("stage-desc-text").innerText = data.desc;
+      document.getElementById("stage-code-text").innerText = data.code;
+      document.getElementById("type-in-val").innerText = data.inType;
+      document.getElementById("type-op-val").innerText = data.op;
+      document.getElementById("type-out-val").innerText = data.outType;
+
+      // Data viewers
+      document.getElementById("data-in-badge").innerText = "Type: " + data.inType;
+      document.getElementById("data-in-viewer").innerText = data.inData;
+      document.getElementById("data-out-badge").innerText = "Type: " + data.outType;
+      document.getElementById("data-out-viewer").innerText = data.outData;
+
+      // Preview box
+      const prevBox = document.getElementById("final-preview-container");
+      if (data.showPreview) {
+        prevBox.style.display = "block";
+        document.getElementById("final-preview-text").innerText = scen.llmResponse;
+      } else {
+        prevBox.style.display = "none";
+      }
+
+      // Track nodes
+      for (let i = 0; i <= 5; i++) {
+        const node = document.getElementById("t-node-" + i);
+        node.classList.remove("active", "completed");
+        if (i === currentStep) node.classList.add("active");
+        else if (i < currentStep) node.classList.add("completed");
+      }
+
+      // Transport buttons
+      document.getElementById("prev-btn").disabled = (currentStep === 0);
+      document.getElementById("next-btn").disabled = (currentStep === 5);
+    }
+
+    function goToStep(idx) {
+      stopAuto();
+      currentStep = idx;
+      render();
+    }
+
+    function nextStep() {
+      if (currentStep < 5) {
+        currentStep++;
+        render();
+      }
+    }
+
+    function prevStep() {
+      if (currentStep > 0) {
+        currentStep--;
+        render();
+      }
+    }
+
+    function resetPipeline() {
+      stopAuto();
+      currentStep = 0;
+      render();
+    }
+
+    function selectScenario(idx) {
+      stopAuto();
+      currentScenario = idx;
+      for (let i = 0; i < 4; i++) {
+        document.getElementById("scen-" + i).classList.toggle("active", i === idx);
+      }
+      currentStep = 0;
+      render();
+    }
+
+    function togglePlay() {
+      if (autoPlayInterval) {
+        stopAuto();
+      } else {
+        document.getElementById("play-text").innerText = "Pause";
+        document.getElementById("play-icon").innerText = "⏸";
+        currentStep = 0;
+        render();
+
+        autoPlayInterval = setInterval(() => {
+          if (currentStep < 5) {
+            currentStep++;
+            render();
+          } else {
+            stopAuto();
+          }
+        }, 1500);
+      }
+    }
+
+    function stopAuto() {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        document.getElementById("play-text").innerText = "Auto Run";
+        document.getElementById("play-icon").innerText = "▶";
+      }
+    }
+
+    function switchView(viewId) {
+      const views = ["visualizer", "comparison", "defense"];
+      views.forEach(v => {
+        const el = document.getElementById("view-" + v);
+        if (el) el.classList.toggle("active", v === viewId);
+        if (v === "visualizer") {
+          el.style.display = (viewId === "visualizer") ? "grid" : "none";
+        }
+      });
+
+      const pills = document.querySelectorAll(".tab-pill");
+      pills.forEach((p, idx) => {
+        p.classList.toggle("active", views[idx] === viewId);
+      });
+    }
+
+    function copyResult() {
+      const txt = document.getElementById("final-preview-text").innerText;
+      navigator.clipboard.writeText(txt).then(() => {
+        const toast = document.getElementById("toast");
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 1500);
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>
