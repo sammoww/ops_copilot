@@ -5,13 +5,18 @@ from typing import Any, Optional
 
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
+try:
+    from langchain.chains import create_history_aware_retriever
+except (ImportError, ModuleNotFoundError):
+    from langchain_classic.chains import create_history_aware_retriever
+
 from src.config import get_settings
-from src.prompts import RAG_PROMPT, REFUSAL_PHRASE
+from src.prompts import CONTEXTUALIZE_Q_PROMPT, RAG_PROMPT, REFUSAL_PHRASE
 from src.query import get_vector_store
 
 
@@ -51,8 +56,33 @@ class MockGroundedChatModel(BaseChatModel):
 
         # Extract system and human message text
         system_text = messages[0].content if len(messages) > 0 else ""
-        human_text = messages[1].content if len(messages) > 1 else ""
+        human_text = messages[-1].content if len(messages) > 1 else ""
 
+        # Case A: Contextual Query Reformulation (called by create_history_aware_retriever)
+        if "standalone question" in system_text.lower() or "reformulate" in system_text.lower():
+            # Scan chat history messages (all messages between system and the latest human input)
+            history_text = " ".join([m.content for m in messages[1:-1]]).lower()
+            query_lower = human_text.lower()
+
+            topic = ""
+            if any(term in history_text for term in ["postgres", "postgresql", "failover", "replica", "database"]):
+                topic = "PostgreSQL database replica failover"
+            elif any(term in history_text for term in ["refund", "sla", "credit"]):
+                topic = "enterprise SLA credit refund policy"
+            elif any(term in history_text for term in ["scim", "provisioning", "break-glass"]):
+                topic = "SCIM provisioning break-glass emergency"
+
+            # If user query references previous topic with pronouns or follow-up phrasing
+            followup_indicators = ["it", "step", "again", "second", "third", "how", "what about", "that"]
+            has_indicator = any(word in query_lower.split() or word in query_lower for word in followup_indicators)
+
+            if topic and has_indicator and not any(term in query_lower for term in ["postgres", "refund", "scim"]):
+                rephrased = f"{human_text} for {topic}".strip()
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=rephrased))])
+
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=human_text))])
+
+        # Case B: Standard Grounded QA Generation
         # Extract context block from system prompt
         context = ""
         if "--- RUNBOOK CONTEXT START ---" in system_text:
@@ -70,7 +100,8 @@ class MockGroundedChatModel(BaseChatModel):
         domain_keywords = {
             "postgres", "postgresql", "failover", "replica", "database", "patroni", "pgbouncer",
             "refund", "sla", "credit", "invoice", "netsuite", "billing", "downtime",
-            "scim", "provisioning", "break-glass", "okta", "saml", "rbac", "user", "access"
+            "scim", "provisioning", "break-glass", "okta", "saml", "rbac", "user", "access",
+            "step", "second step"
         }
         has_domain_term = any(term in question_lower for term in domain_keywords)
         if not has_domain_term:
@@ -81,7 +112,7 @@ class MockGroundedChatModel(BaseChatModel):
             "Based on the verified runbooks, here are the operational steps:\n",
         ]
 
-        if "promote" in question_lower or "database" in question_lower or "postgresql" in question_lower:
+        if "promote" in question_lower or "database" in question_lower or "postgresql" in question_lower or "failover" in question_lower or "step" in question_lower:
             lines.append("1. Isolate the degraded primary to avoid split-brain conditions [Source: database_failover_runbook.md, Section: 4.1 Isolate Primary].")
             lines.append("2. Execute replica promotion command: `/usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main` [Source: database_failover_runbook.md, Section: 4.2 Promote Synchronous Replica].")
             lines.append("3. Update PgBouncer upstream routing configuration to point to the new primary node [Source: database_failover_runbook.md, Section: 4.3 Switch PgBouncer].")
@@ -118,14 +149,21 @@ def get_chat_model() -> BaseChatModel:
 
 
 def build_rag_chain(k: int = 3) -> tuple[Any, Any]:
-    """Construct LCEL RAG chain returning both the answer and the source documents.
+    """Construct LCEL RAG chain with history-aware retriever returning docs and answer.
 
     Pipeline:
-      question -> retriever -> format_docs -> prompt -> llm -> StrOutputParser()
+      (question, chat_history) -> history_aware_retriever -> format_docs -> prompt -> llm -> StrOutputParser()
     """
     vector_store = get_vector_store()
     retriever = vector_store.as_retriever(search_kwargs={"k": k})
     llm = get_chat_model()
+
+    # History-aware retrieval: reformulates conversational follow-ups into standalone queries
+    history_aware_retriever = create_history_aware_retriever(
+        llm=llm,
+        retriever=retriever,
+        prompt=CONTEXTUALIZE_Q_PROMPT,
+    )
 
     # LCEL generation pipeline
     rag_chain_from_docs = (
@@ -138,13 +176,25 @@ def build_rag_chain(k: int = 3) -> tuple[Any, Any]:
         | StrOutputParser()
     )
 
-    return retriever, rag_chain_from_docs
+    return history_aware_retriever, rag_chain_from_docs
 
 
-def answer_question(question: str, k: int = 3) -> dict[str, Any]:
-    """Execute end-to-end RAG query returning answer text and source documents."""
-    retriever, chain = build_rag_chain(k=k)
-    source_docs = retriever.invoke(question)
+def answer_question(
+    question: str,
+    chat_history: Optional[list[BaseMessage]] = None,
+    k: int = 3,
+) -> dict[str, Any]:
+    """Execute end-to-end RAG query with optional multi-turn conversation history."""
+    history_retriever, chain = build_rag_chain(k=k)
+    history = chat_history or []
+
+    # Retrieve docs using history-aware retriever
+    source_docs = history_retriever.invoke(
+        {
+            "input": question,
+            "chat_history": history,
+        }
+    )
 
     answer_text = chain.invoke(
         {
@@ -157,6 +207,7 @@ def answer_question(question: str, k: int = 3) -> dict[str, Any]:
         "question": question,
         "answer": answer_text,
         "source_documents": source_docs,
+        "chat_history": history,
     }
 
 

@@ -1,9 +1,24 @@
 """Production prompt templates for grounded, zero-hallucination enterprise QA."""
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # Exact standardized refusal phrase for out-of-domain queries
 REFUSAL_PHRASE = "I cannot find the answer in the provided runbooks."
+
+# Prompt for contextualizing / rephrasing user queries based on chat history
+CONTEXTUALIZE_Q_SYSTEM_PROMPT = (
+    "Given a chat history and the latest user question which might reference context in the "
+    "chat history, formulate a standalone question which can be understood without the chat "
+    "history. Do NOT answer the question, just reformulate it if needed and otherwise return it as is."
+)
+
+CONTEXTUALIZE_Q_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", CONTEXTUALIZE_Q_SYSTEM_PROMPT),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ]
+)
 
 # Strict system instructions enforcing grounding, citations, and deterministic refusal
 SYSTEM_PROMPT = f"""You are OpsCopilot, an expert AI Site Reliability Engineer and DevOps assistant.
