@@ -232,9 +232,9 @@ Write src/rag_chain.py using modern LCEL syntax. Initialize ChatOpenAI(model="gp
 3. Run tests and assert that out-of-domain queries return the exact refusal string.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** What is an automated RAG evaluation framework (e.g., Ragas, TruLens)? (Explain the concept of Groundedness/Faithfulness).
-* [ ] **Q2:** How would you test this pipeline in a CI/CD GitHub Actions workflow without running up expensive API bills?
-* [ ] **Q3:** What constitutes a false negative in retrieval?
+* [x] **Q1:** What is an automated RAG evaluation framework (e.g., Ragas, TruLens)? (Explain the concept of Groundedness/Faithfulness).
+* [x] **Q2:** How would you test this pipeline in a CI/CD GitHub Actions workflow without running up expensive API bills?
+* [x] **Q3:** What constitutes a false negative in retrieval?
 
 ---
 
