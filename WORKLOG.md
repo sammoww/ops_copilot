@@ -556,13 +556,77 @@ Document metrics measured directly:
     1. **Phase 1 (Query Reformulation / Condensation)**: A lightweight LLM call receives `[Chat History + Latest User Query]` with strict instructions: *"Formulate a standalone question that can be understood without the chat history. Do NOT answer it, just rephrase."* The LLM resolves pronouns: *"What was the second step of it again?"* ➔ *"What is the second step of PostgreSQL replica promotion?"*
     2. **Phase 2 (Targeted Retrieval)**: The rewritten standalone question is passed directly into the vector store, ensuring cosine similarity matches the exact runbook subject.
 
-#### Q3: What is the token/latency cost of passing full chat history into every single retrieval step?
+---
+
+## 2026-11-07 — Day 10: Encapsulating the Core Application Service
+
+### 1. What Was Done
+- Respected strict Day 10 boundary: **pure refactoring and service encapsulation without building REST endpoints or frontend UI prematurely**.
+- Implemented `OpsCopilotService` in `src/service.py`:
+  - **Constructor `__init__`**: Encapsulates `VectorStore`, `BaseChatModel`, `Settings`, and top-k retrieval configuration, supporting optional Dependency Injection for testing and production decoupling.
+  - **Connection Reuse**: Instantiates `history_retriever` and `rag_chain` once at service initialization, eliminating per-query connection and pipeline compilation overhead.
+  - **`query(question, history=None) -> dict`**: Unified entrypoint supporting raw strings, `HumanMessage`/`AIMessage` objects, and REST API dict-style payloads (`[{"role": "user", "content": "..."}]`).
+  - **`health_check() -> bool`**: Verifies operational readiness by testing underlying vector store probe queries and LLM availability.
+  - **`get_opscopilot_service()`**: Provides an `@lru_cache` memoized singleton for FastAPI `Depends()` dependency injection.
+- Implemented comprehensive test suite in `tests/test_service.py` (8 tests):
+  - Initialization and component verification.
+  - Healthy and degraded health-check probing.
+  - Single-turn and multi-turn query execution.
+  - Dict-style payload normalization for REST APIs.
+  - Empty query guardrails.
+  - Singleton caching consistency.
+
+### 2. What Worked
+- Full service encapsulation eliminates global state leakage between independent user sessions.
+- SQLite database connection and LCEL pipeline compiled once and reused across all test cases.
+- Full test suite execution: **42 passed in 2.60s**.
+
+### 3. What Failed & Why
+- Initial failure test passed an ad-hoc class to `create_history_aware_retriever` that didn't implement the LangChain `Runnable` pipe operator `|`; wrapped the broken test double with `RunnableLambda` to simulate runtime database connection dropouts accurately.
+
+### 4. Verification Results
+- **Day 10 Service Tests**:
+  ```text
+  pytest -v tests/test_service.py
+  tests/test_service.py::test_service_initialization PASSED                [ 12%]
+  tests/test_service.py::test_service_health_check_healthy PASSED          [ 25%]
+  tests/test_service.py::test_service_health_check_handles_failure PASSED  [ 37%]
+  tests/test_service.py::test_service_query_single_turn PASSED             [ 50%]
+  tests/test_service.py::test_service_query_multi_turn_with_messages PASSED [ 62%]
+  tests/test_service.py::test_service_query_with_dict_history PASSED       [ 75%]
+  tests/test_service.py::test_service_empty_query PASSED                   [ 87%]
+  tests/test_service.py::test_service_singleton_reusability PASSED         [100%]
+  8 passed in 2.33s
+  ```
+- **Full Project Suite (Days 1–10 / Weeks 1 & 2 Complete)**:
+  ```text
+  pytest -v
+  42 passed in 2.60s
+  ```
+
+### 5. Day 10 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why must database connections or LLM client instances be reused instead of re-instantiated on every function call?
 - **Answer**:
-  - **Quadratic Context & Latency Growth**: If an incident conversation lasts 20 turns, passing all 20 turns to the query condensation LLM on every query causes token consumption to grow quadratically ($O(N^2)$), inflating API costs and adding 300–800ms of extra latency before retrieval even begins.
-  - **Production Mitigations**:
-    1. **Sliding Window Buffer (`k=3` turns)**: Pass only the last 3 turns of dialogue to the reformulator.
-    2. **Summary Buffer**: Summarize older conversation into a 2-sentence running recap.
-    3. **Fast Lightweight Model**: Use an ultra-fast model (like `gpt-4o-mini` or fine-tuned 8B SLM) specifically for query rewriting, reserving heavier reasoning models for final answer synthesis.
+  - **TCP Handshake & SSL/TLS Negotiation Overhead**: Creating an HTTPS client or database connection on every user request introduces 50–150ms of socket connection latency, TLS handshake overhead, and SSL certificate verification before sending a single byte.
+  - **Socket Exhaustion & File Descriptor Leaks**: In high-throughput incident response systems (e.g. 50 requests/second), rapidly opening and closing unpooled connections exhausts OS ephemeral ports (`TIME_WAIT` socket starvation), causing connection dropouts under load.
+  - **Memory & Pipeline Compilation**: Rebuilding LangChain LCEL chains on every call re-parses prompt templates and validates input schemas unnecessarily. By binding connections to a singleton `OpsCopilotService` instance, the app maintains an active connection pool and compiled pipeline throughout its lifecycle.
+
+#### Q2: What is dependency injection and how will it help when we wrap this service in FastAPI next week?
+- **Answer**:
+  - **Inversion of Control (IoC)**: Instead of a class hardcoding its own dependencies (`self.db = connect_sqlite()`), dependencies are passed into the class from the outside (`__init__(self, vector_store=None)`).
+  - **Benefits in FastAPI**:
+    1. **Mocking & Isolation in Unit Tests**: In FastAPI test suites (`TestClient`), we can inject a mock vector store or test model using `app.dependency_overrides[get_opscopilot_service] = mock_service` without changing a single line of application code or touching production databases.
+    2. **Decoupled Architecture**: Routes only declare *what* they need (`service: OpsCopilotService = Depends(get_opscopilot_service)`), leaving lifecycle and configuration management to FastAPI's dependency container.
+
+#### Q3: Walk through `src/service.py` line-by-line out loud in under 2 minutes.
+- **Answer**:
+  - **Lines 1–19 (Imports)**: Core LangChain messages, vector store interface, LCEL runnable parsers, and internal OpsCopilot prompts and models.
+  - **Lines 21–68 (`__init__`)**: Constructor resolves settings, vector store, and LLM; builds base retriever, history-aware retriever, and the LCEL generation chain once at startup.
+  - **Lines 70–136 (`query`)**: Handles input validation; normalizes chat history into LangChain `BaseMessage` objects; invokes history-aware retrieval; pipes into LCEL chain; returns answer, source documents, and history.
+  - **Lines 138–162 (`health_check`)**: Executes a lightweight 1-document probe against the vector store and verifies LLM instance health, returning a simple boolean for Kubernetes/Docker liveness probes.
+  - **Lines 164–168 (`get_opscopilot_service`)**: Module-level `@lru_cache` singleton factory for FastAPI `Depends()`.
+
 
 
 
