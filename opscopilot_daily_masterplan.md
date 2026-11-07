@@ -248,9 +248,9 @@ Write src/rag_chain.py using modern LCEL syntax. Initialize ChatOpenAI(model="gp
 3. Use LangChain's `create_history_aware_retriever`.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why does standard vector search fail if the user asks: *"What was the second step again?"*
-* [ ] **Q2:** How does a "condense question prompt" or "history-aware retriever" solve this pronoun/reference issue?
-* [ ] **Q3:** What is the token/latency cost of passing full chat history into every single retrieval step?
+* [x] **Q1:** Why does standard vector search fail if the user asks: *"What was the second step again?"*
+* [x] **Q2:** How does a "condense question prompt" or "history-aware retriever" solve this pronoun/reference issue?
+* [x] **Q3:** What is the token/latency cost of passing full chat history into every single retrieval step?
 
 ---
 
