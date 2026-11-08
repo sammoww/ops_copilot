@@ -266,9 +266,9 @@ Write src/rag_chain.py using modern LCEL syntax. Initialize ChatOpenAI(model="gp
 3. Ensure no global state variables are leaking across calls.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why must database connections or LLM client instances be reused instead of re-instantiated on every function call?
-* [ ] **Q2:** What is dependency injection and how will it help when we wrap this service in FastAPI next week?
-* [ ] **Q3:** Walk through `src/service.py` line-by-line out loud in under 2 minutes.
+* [x] **Q1:** Why must database connections or LLM client instances be reused instead of re-instantiated on every function call?
+* [x] **Q2:** What is dependency injection and how will it help when we wrap this service in FastAPI next week?
+* [x] **Q3:** Walk through `src/service.py` line-by-line out loud in under 2 minutes.
 
 ---
 
