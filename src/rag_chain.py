@@ -96,6 +96,62 @@ class MockGroundedChatModel(BaseChatModel):
         # Case B: Tool Calling Detection (when tools are bound to the model)
         tools = kwargs.get("tools", [])
         if tools:
+            # Check if a ToolMessage was already executed in this conversation
+            last_tool_msg = None
+            for m in reversed(messages):
+                if getattr(m, "type", "") == "tool":
+                    last_tool_msg = m
+                    break
+
+            if last_tool_msg is not None:
+                import json
+                tool_content = str(last_tool_msg.content)
+                
+                # Check for validation error feedback
+                if "VALIDATION_ERROR" in tool_content:
+                    return ChatResult(
+                        generations=[ChatGeneration(message=AIMessage(content=f"I encountered a validation error: {tool_content}. Please provide valid parameters."))]
+                    )
+
+                # Format service status telemetry
+                if any(k in tool_content.lower() for k in ["latency", "active_replicas", "diagnostic_alert", "error_rate"]):
+                    try:
+                        data = json.loads(tool_content)
+                        ans = (
+                            f"Service status for {data.get('service_name')}: {data.get('status')}. "
+                            f"Latency: {data.get('latency_ms')}ms, Error rate: {data.get('error_rate_pct')}%, "
+                            f"Active replicas: {data.get('active_replicas')}, Region: {data.get('region')}. "
+                            f"Diagnostics: {data.get('diagnostic_alert')}"
+                        )
+                    except Exception:
+                        ans = f"Service telemetry report:\n{tool_content}"
+                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+
+                # Format incident ticket confirmation
+                if any(k in tool_content.lower() for k in ["ticket_id", "inc-", "escalated_to"]):
+                    try:
+                        data = json.loads(tool_content)
+                        ans = (
+                            f"Incident ticket {data.get('ticket_id')} ({data.get('severity')}) successfully opened "
+                            f"for '{data.get('title')}'. Escalated to: {data.get('escalated_to')}."
+                        )
+                    except Exception:
+                        ans = f"Incident ticket dispatched:\n{tool_content}"
+                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+
+                # Format runbook context search results
+                if any(k in tool_content.lower() for k in ["runbook_context", "source:"]):
+                    ans = (
+                        "Based on verified runbooks retrieved from ChromaDB:\n"
+                        "1. Isolate the degraded primary to avoid split-brain conditions [Source: database_failover_runbook.md, Section: 4.1 Isolate Primary].\n"
+                        "2. Execute replica promotion command: `/usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main` [Source: database_failover_runbook.md, Section: 4.2 Promote Synchronous Replica].\n"
+                        "3. Update PgBouncer upstream routing configuration to point to the new primary node [Source: database_failover_runbook.md, Section: 4.3 Switch PgBouncer]."
+                    )
+                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Tool output: {tool_content}"))])
+
+            # No tool executed yet -> check whether to invoke a tool or reply directly
             query_lower = human_text.lower()
             tool_calls = []
 
@@ -114,7 +170,7 @@ class MockGroundedChatModel(BaseChatModel):
                 })
 
             # Check for create_incident_ticket request
-            if any(term in query_lower for term in ["ticket", "file an incident", "incident", "down", "outage"]):
+            elif any(term in query_lower for term in ["ticket", "file an incident", "incident", "down", "outage"]):
                 severity = "P0" if any(w in query_lower for w in ["p0", "urgent", "critical", "down"]) else "P1"
                 tool_calls.append({
                     "name": "create_incident_ticket",
@@ -126,10 +182,24 @@ class MockGroundedChatModel(BaseChatModel):
                     "type": "tool_call",
                 })
 
+            # Check for search_runbooks request
+            elif any(term in query_lower for term in ["failover", "runbook", "steps", "procedure", "replica", "postgres", "refund", "sla", "scim", "how do i", "how to"]):
+                tool_calls.append({
+                    "name": "search_runbooks",
+                    "args": {"query": human_text.strip()},
+                    "id": "call_mock_runbook_03",
+                    "type": "tool_call",
+                })
+
             if tool_calls:
                 return ChatResult(
                     generations=[ChatGeneration(message=AIMessage(content="", tool_calls=tool_calls))]
                 )
+
+            # Direct conversation without tool call (e.g. greetings)
+            if any(w in query_lower for w in ["hello", "hi", "hey", "who are you", "help"]):
+                greeting = "Hello! I am OpsCopilot, your DevOps & SRE incident response assistant. How can I help with services, runbooks, or tickets today?"
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=greeting))])
 
         # Case C: Standard Grounded QA Generation
         # Extract context block from system prompt

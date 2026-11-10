@@ -305,9 +305,9 @@ Write src/tools/incident_tools.py using LangChain's @tool decorator and Pydantic
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Does the LLM execute the Python code of your tool directly on OpenAI's servers? (Explain the tool-calling handshake).
-* [ ] **Q2:** How does the model know what arguments to pass to your function? (Role of JSON Schema and docstrings).
-* [ ] **Q3:** What security vulnerabilities exist with LLM tool calling (e.g., SQL injection, arbitrary code execution), and how do you protect against them?
+* [x] **Q1:** Does the LLM execute the Python code of your tool directly on OpenAI's servers? (Explain the tool-calling handshake).
+* [x] **Q2:** How does the model know what arguments to pass to your function? (Role of JSON Schema and docstrings).
+* [x] **Q3:** What security vulnerabilities exist with LLM tool calling (e.g., SQL injection, arbitrary code execution), and how do you protect against them?
 
 ---
 
@@ -323,9 +323,9 @@ Write src/tools/incident_tools.py using LangChain's @tool decorator and Pydantic
 2. Test query: *"What is the status of the auth-service?"* $\rightarrow$ Model calls `get_service_status(service_name='auth-service')` $\rightarrow$ Model formats the answer.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** What is the difference between ReAct agent prompting and native OpenAI Tool Calling?
-* [ ] **Q2:** What happens if the tool raises an unhandled Python exception (e.g., `KeyError` or timeout)? How should the LLM handle that error message?
-* [ ] **Q3:** How do you prevent an agent from getting trapped in an infinite tool-calling loop?
+* [x] **Q1:** What is the difference between ReAct agent prompting and native OpenAI Tool Calling?
+* [x] **Q2:** What happens if the tool raises an unhandled Python exception (e.g., `KeyError` or timeout)? How should the LLM handle that error message?
+* [x] **Q3:** How do you prevent an agent from getting trapped in an infinite tool-calling loop?
 
 ---
 

@@ -127,6 +127,32 @@ def create_incident_ticket(title: str, severity: str = "P1") -> dict[str, Any]:
     }
 
 
+class RunbookSearchInput(BaseModel):
+    """Input schema for querying operational runbooks in ChromaDB."""
+
+    query: str = Field(
+        description="Search phrase or operational topic to look up in ChromaDB runbooks (e.g. 'PostgreSQL replica failover', 'SLA refund policy')."
+    )
+
+
+@tool("search_runbooks", args_schema=RunbookSearchInput)
+def search_runbooks(query: str) -> dict[str, Any]:
+    """Search verified SRE incident runbooks and operational procedures in the ChromaDB vector store."""
+    from src.query import get_vector_store
+    from src.rag_chain import format_docs
+
+    vs = get_vector_store()
+    retriever = vs.as_retriever(search_kwargs={"k": 3})
+    docs = retriever.invoke(query)
+    formatted = format_docs(docs)
+    return {
+        "query": query,
+        "results_count": len(docs),
+        "runbook_context": formatted,
+    }
+
+
 # Export list and lookup mapping for model tool-binding
 ALL_INCIDENT_TOOLS = [get_service_status, create_incident_ticket]
-INCIDENT_TOOL_MAP = {t.name: t for t in ALL_INCIDENT_TOOLS}
+ALL_AGENT_TOOLS = [get_service_status, create_incident_ticket, search_runbooks]
+INCIDENT_TOOL_MAP = {t.name: t for t in ALL_AGENT_TOOLS}

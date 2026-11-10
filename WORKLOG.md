@@ -690,7 +690,89 @@ Document metrics measured directly:
 
 ---
 
-## 2026-11-10 — Day 11: Defining External Action Tools
+## 2026-11-10 — Day 12: Tool Routing & ReAct Execution Loop
+
+### 1. What Was Done
+- Respected the strict Day 12 boundary: **CLI-level agent execution loop only**, no premature FastAPI or UI wiring.
+- Extended `src/tools/incident_tools.py` with `search_runbooks` tool and `ALL_AGENT_TOOLS` export, providing unified model access to live telemetry, ticket creation, and ChromaDB runbooks.
+- Created `src/agent.py`:
+  - `AgentStep`: Structured audit trail tracking tool name, input arguments, call ID, execution output, and error flags.
+  - `AgentResponse`: Clean response envelope containing query, final answer, intermediate steps, tools called, iterations count, success boolean, and error message.
+  - `OpsCopilotAgent`: Enterprise ReAct execution loop handling multi-turn model invocation, dynamic tool routing, and self-healing reflection.
+  - Hard safety limit (`max_iterations=5`) preventing runaway recursion.
+  - Exception and validation error interception: catches `ValidationError` and general exceptions, formatting actionable error messages inside `ToolMessage` to allow the model to reflect and recover without crashing.
+  - `run_agent(query, ...)`: Top-level helper function for frictionless invocation.
+- Updated `MockGroundedChatModel` in `src/rag_chain.py` to support tool message receipt, multi-turn synthesis, and direct conversational chit-chat without tool activation.
+- Created `tests/test_agent.py` covering:
+  1. Healthy service status telemetry routing (`auth-service`).
+  2. Down service failure diagnostics routing (`postgres-primary`).
+  3. P0 incident ticket creation and dispatch confirmation.
+  4. Procedural troubleshooting routing to ChromaDB runbooks (`search_runbooks`).
+  5. Direct conversation without tool triggering (`"Hello, who are you?"`).
+  6. Empty query guardrail.
+  7. Infinite loop prevention ceiling (`InfiniteLoopMockModel`).
+  8. Pydantic validation error capture and recovery (`BadArgsMockModel`).
+
+### 2. What Worked
+- All 8 new agent tests passed on the first run.
+- Zero regressions: full test suite now runs 59 tests in 6.23s.
+- Complete separation of concerns: the LLM decides *what* tool to run, Python executes it locally, and errors are fed back as structured `ToolMessage` instances for self-healing.
+
+### 3. What Failed & Why
+- Nothing failed; clean execution throughout the implementation.
+
+### 4. Verification Results
+- **Day 12 Agent Test Suite**:
+  ```text
+  pytest -v tests/test_agent.py
+  tests/test_agent.py::test_agent_status_routing_healthy_service PASSED    [ 12%]
+  tests/test_agent.py::test_agent_status_routing_down_database PASSED      [ 25%]
+  tests/test_agent.py::test_agent_incident_ticket_creation PASSED          [ 37%]
+  tests/test_agent.py::test_agent_runbook_search_routing PASSED            [ 50%]
+  tests/test_agent.py::test_agent_direct_conversation_without_tools PASSED [ 62%]
+  tests/test_agent.py::test_agent_empty_query_guard PASSED                 [ 75%]
+  tests/test_agent.py::test_agent_infinite_loop_prevention PASSED          [ 87%]
+  tests/test_agent.py::test_agent_catches_validation_error_and_recovers PASSED [100%]
+  8 passed in 6.42s
+  ```
+- **OpsCopilot Full Test Suite (Days 1–12)**:
+  ```text
+  pytest tests/test_agent.py tests/test_config.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_vector_store.py
+  59 passed in 6.23s
+  ```
+
+### 5. Day 12 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: What is the difference between ReAct agent prompting and native OpenAI Tool Calling?
+- **Answer**:
+  - **ReAct Agent Prompting (Prompt-Based Reasoning)**:
+    - Traditional ReAct (Reason + Act) works entirely through system prompt engineering. You instruct the model to follow a strict text syntax in its regular output stream, such as:
+      `Thought: I need to check auth-service status.`
+      `Action: get_service_status`
+      `Action Input: {"service_name": "auth-service"}`
+      `Observation: [Tool result injected here]`
+    - **Weakness**: Fragile regex parsing is required. The model frequently makes formatting typos (e.g. forgetting quotes or misspelling `Action:`), causing the parser to fail.
+  - **Native OpenAI Tool Calling (Constrained Token Decoding)**:
+    - Native tool calling is baked directly into the model's neural network weights. Tools are passed as formal JSON Schemas via the API (`tools=[...]`).
+    - The model outputs structured `tool_calls` tokens separated from `content`. It enforces JSON syntax validity at the decoding level, eliminating regex parsing and drastically reducing formatting failures.
+
+#### Q2: What happens if the tool raises an unhandled Python exception (e.g., `KeyError` or timeout)? How should the LLM handle that error message?
+- **Answer**:
+  - **The Risk**: If an exception is unhandled, the Python process crashes and the user receives an HTTP 500 error, breaking the user experience during a critical production incident.
+  - **The Solution (Interception & Reflection)**:
+    - The execution loop wraps tool invocation in a `try...except` block.
+    - When an exception occurs (e.g. `TimeoutError("Datadog API unreachable")`), Python intercepts it and wraps the error string into a `ToolMessage(content="TOOL_ERROR: Datadog API unreachable", tool_call_id=call_id)`.
+    - Python appends this `ToolMessage` to the conversation history and invokes the LLM again.
+    - **LLM Handling**: The model reads that the tool failed and gracefully informs the user (e.g., *"I was unable to retrieve live telemetry due to an upstream Datadog timeout, but based on runbook guidelines, here are the manual failover steps..."*), preventing a hard crash.
+
+#### Q3: How do you prevent an agent from getting trapped in an infinite tool-calling loop?
+- **Answer**:
+  - **The Risk**: If the model repeatedly requests a tool with bad arguments or gets caught in a circular reasoning loop, it could make hundreds of API calls, exhausting OpenAI token quotas and locking up server threads.
+  - **Protections**:
+    1. **Hard Max Iterations Ceiling**: A strict iteration counter (e.g., `max_iterations=5`). If the loop hits this limit without the model emitting a final answer, the loop forcefully terminates and returns a safe fallback message.
+    2. **Tool Repetition Detection**: Track previously called `(tool_name, tool_args)`. If the exact same call is repeated 2 or 3 times with the exact same error, break early.
+    3. **Wall-Clock Timeout**: Enforce an async timeout (e.g. `asyncio.timeout(15.0)`) on the entire execution loop.
+
 
 ### 1. What Was Done
 - Respected strict Day 11 boundary: **pure action tool implementation and Python-level testing without prematurely building FastAPI routes**.

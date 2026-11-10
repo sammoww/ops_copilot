@@ -19,6 +19,8 @@ htmlcov/
 chroma_db/
 test_chroma/
 *.sqlite3
+*.kuzu*
+data/*.kuzu*
 
 # IDE & OS files
 .vscode/
