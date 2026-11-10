@@ -54,9 +54,20 @@ class MockGroundedChatModel(BaseChatModel):
     ) -> Any:
         from langchain_core.outputs import ChatGeneration, ChatResult
 
-        # Extract system and human message text
-        system_text = messages[0].content if len(messages) > 0 else ""
-        human_text = messages[-1].content if len(messages) > 1 else ""
+        # Extract system and human message text flexibly across prompt structures
+        system_text = ""
+        human_text = ""
+        for m in messages:
+            msg_type = getattr(m, "type", "")
+            if msg_type == "system":
+                system_text = m.content
+            elif msg_type in ("human", "user"):
+                human_text = m.content
+
+        if not human_text and messages:
+            human_text = messages[-1].content if hasattr(messages[-1], "content") else str(messages[-1])
+        if not system_text and len(messages) > 1 and getattr(messages[0], "type", "") != "human":
+            system_text = messages[0].content if hasattr(messages[0], "content") else str(messages[0])
 
         # Case A: Contextual Query Reformulation (called by create_history_aware_retriever)
         if "standalone question" in system_text.lower() or "reformulate" in system_text.lower():
@@ -82,7 +93,45 @@ class MockGroundedChatModel(BaseChatModel):
 
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=human_text))])
 
-        # Case B: Standard Grounded QA Generation
+        # Case B: Tool Calling Detection (when tools are bound to the model)
+        tools = kwargs.get("tools", [])
+        if tools:
+            query_lower = human_text.lower()
+            tool_calls = []
+
+            # Check for get_service_status request
+            if any(term in query_lower for term in ["status", "health", "latency", "telemetry"]):
+                target_service = "postgres-primary"
+                for s in ["auth-service", "payment-gateway", "postgres-primary", "pgbouncer"]:
+                    if s in query_lower:
+                        target_service = s
+                        break
+                tool_calls.append({
+                    "name": "get_service_status",
+                    "args": {"service_name": target_service},
+                    "id": "call_mock_status_01",
+                    "type": "tool_call",
+                })
+
+            # Check for create_incident_ticket request
+            if any(term in query_lower for term in ["ticket", "file an incident", "incident", "down", "outage"]):
+                severity = "P0" if any(w in query_lower for w in ["p0", "urgent", "critical", "down"]) else "P1"
+                tool_calls.append({
+                    "name": "create_incident_ticket",
+                    "args": {
+                        "title": human_text.strip(),
+                        "severity": severity,
+                    },
+                    "id": "call_mock_ticket_02",
+                    "type": "tool_call",
+                })
+
+            if tool_calls:
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage(content="", tool_calls=tool_calls))]
+                )
+
+        # Case C: Standard Grounded QA Generation
         # Extract context block from system prompt
         context = ""
         if "--- RUNBOOK CONTEXT START ---" in system_text:
@@ -128,6 +177,10 @@ class MockGroundedChatModel(BaseChatModel):
 
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content="\n".join(lines)))])
 
+    def bind_tools(self, tools: list[Any], **kwargs: Any) -> Any:
+        """Bind external tools to the mock chat model returning a runnable binding."""
+        return self.bind(tools=tools, **kwargs)
+
     @property
     def _llm_type(self) -> str:
         return "mock-grounded-chat-model"
@@ -146,6 +199,14 @@ def get_chat_model() -> BaseChatModel:
         )
 
     return MockGroundedChatModel()
+
+
+def get_tool_enabled_model() -> Any:
+    """Return configured ChatModel bound to external incident response action tools."""
+    from src.tools.incident_tools import ALL_INCIDENT_TOOLS
+
+    model = get_chat_model()
+    return model.bind_tools(ALL_INCIDENT_TOOLS)
 
 
 def build_rag_chain(k: int = 3) -> tuple[Any, Any]:
