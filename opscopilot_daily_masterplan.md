@@ -342,9 +342,9 @@ Write src/tools/incident_tools.py using LangChain's @tool decorator and Pydantic
 4. Test using the automatic Swagger UI at `http://localhost:8000/docs`.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why do we use Pydantic models for request validation in FastAPI instead of raw JSON dictionaries?
-* [ ] **Q2:** What does FastAPI's `/docs` (OpenAPI/Swagger) give frontend developers without you writing extra documentation?
-* [ ] **Q3:** Why is CORS middleware necessary if a React/Streamlit app talks to your FastAPI backend on different ports?
+* [x] **Q1:** Why do we use Pydantic models for request validation in FastAPI instead of raw JSON dictionaries?
+* [x] **Q2:** What does FastAPI's `/docs` (OpenAPI/Swagger) give frontend developers without you writing extra documentation?
+* [x] **Q3:** Why is CORS middleware necessary if a React/Streamlit app talks to your FastAPI backend on different ports?
 
 ---
 

@@ -773,21 +773,81 @@ Document metrics measured directly:
     2. **Tool Repetition Detection**: Track previously called `(tool_name, tool_args)`. If the exact same call is repeated 2 or 3 times with the exact same error, break early.
     3. **Wall-Clock Timeout**: Enforce an async timeout (e.g. `asyncio.timeout(15.0)`) on the entire execution loop.
 
+---
+
+## 2026-11-11 — Day 13: FastAPI Skeleton & Strict Request/Response Schemas
 
 ### 1. What Was Done
-- Respected strict Day 11 boundary: **pure action tool implementation and Python-level testing without prematurely building FastAPI routes**.
-- Created `src/tools/__init__.py` and `src/tools/incident_tools.py`:
-  - `get_service_status(service_name: str) -> dict`: Queries simulated telemetry catalog (`MOCK_SERVICE_REGISTRY`) returning health status (`HEALTHY`, `DEGRADED`, `DOWN`, `UNKNOWN`), latency in milliseconds, error rate percentage, active replica counts, and diagnostic alert details.
-  - `create_incident_ticket(title: str, severity: str = 'P1') -> dict`: Dispatches incident tickets with deterministic IDs (`INC-xxxx`), automated escalation matrices (P0 escalates to Engineering Director & VP Infrastructure; P1 to Principal SRE; P2/P3 to service channels), and ISO timestamps.
-- Defined strongly-typed Pydantic schemas (`ServiceStatusInput`, `IncidentTicketInput`) with `Literal["P0", "P1", "P2", "P3"]` validation.
-- Updated `src/rag_chain.py`:
-  - Implemented `get_tool_enabled_model()` binding `ALL_INCIDENT_TOOLS`.
-  - Added `bind_tools` and tool-call detection to `MockGroundedChatModel` enabling deterministic offline testing of function calling at $0 API cost.
-- Created test suite `tests/test_tools.py` with 9 automated tests:
-  - Tool metadata, names, and JSON schema inspection.
-  - Status retrieval for healthy (`auth-service`), degraded (`pgbouncer`), and failed (`postgres-primary`) infrastructure.
-  - Graceful handling of unregistered services.
-  - Critical P0 ticket creation with escalation path verification.
+- Respected the strict Day 13 boundary: **synchronous/async JSON REST endpoints only, no token streaming (SSE) yet**.
+- Created `src/api/__init__.py` and `src/api/schemas.py`:
+  - `ChatRequest`: validates incoming client JSON, enforcing non-empty `message: str` (`min_length=1`) and optional `conversation_id: Optional[str]`.
+  - `ChatResponse`: structured response contract returning `answer: str`, `sources: list[str]`, `tools_called: list[str]`, and `success: bool`.
+  - `HealthResponse`: standardized probe contract (`status="ok"`, `version="0.1.0"`).
+- Created `src/main.py`:
+  - Initialized `FastAPI` application with metadata, `/docs` (Swagger UI), and `/redoc`.
+  - Configured `CORSMiddleware` with permissive origins, headers, and methods for seamless frontend and Slack integration.
+  - Dependency Injection provider `get_agent()` using `@lru_cache` to reuse the initialized `OpsCopilotAgent` singleton across requests.
+  - Created endpoints:
+    - `GET /`: service discovery and documentation links.
+    - `GET /health`: liveness and readiness probe for container orchestrators.
+    - `POST /chat` & `POST /api/v1/chat`: runs operational queries through the agent execution loop and regex-extracts verified source citations.
+- Created `tests/test_api.py` with 8 automated test cases using FastAPI `TestClient`:
+  - Root endpoint discovery (`/`).
+  - Health check probe (`/health`).
+  - Chat query execution with live telemetry tool routing (`auth-service`).
+  - API v1 alias endpoint (`/api/v1/chat`).
+  - Runbook source citation extraction.
+  - Pydantic validation error handling for empty messages (422 Unprocessable Entity).
+  - Missing field validation error handling (422 Unprocessable Entity).
+  - CORS header compliance for cross-origin callers.
+
+### 2. What Worked
+- All 8 API test cases pass cleanly.
+- Full test suite now executes **66 tests in 7.30s** with zero regressions.
+- Interactive documentation automatically generated at `http://localhost:8000/docs`.
+
+### 3. What Failed & Why
+- `test_cors_headers` initially asserted `access-control-allow-origin == "*"`. However, when `allow_credentials=True` is enabled in Starlette/FastAPI CORS middleware, the W3C spec forbids wildcard `*` and reflects the request's exact `Origin` (`http://localhost:3000`). Updated assertion to verify `access-control-allow-origin in ("*", "http://localhost:3000")`.
+
+### 4. Verification Results
+- **Day 13 API Test Suite**:
+  ```text
+  pytest -v tests/test_api.py
+  tests/test_api.py::test_root_endpoint PASSED                             [ 12%]
+  tests/test_api.py::test_health_check_endpoint PASSED                     [ 25%]
+  tests/test_api.py::test_chat_endpoint_status_query PASSED                [ 37%]
+  tests/test_api.py::test_api_v1_chat_endpoint_alias PASSED                [ 50%]
+  tests/test_api.py::test_chat_endpoint_runbook_query_citations PASSED     [ 62%]
+  tests/test_api.py::test_chat_endpoint_validation_error_empty_message PASSED [ 75%]
+  tests/test_api.py::test_chat_endpoint_missing_message_field PASSED       [ 87%]
+  tests/test_api.py::test_cors_headers PASSED                              [100%]
+  8 passed in 6.76s
+  ```
+- **OpsCopilot Full Test Suite (Days 1–13)**:
+  ```text
+  pytest tests/test_agent.py tests/test_api.py tests/test_config.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_vector_store.py
+  66 passed in 7.30s
+  ```
+
+### 5. Day 13 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why do we use Pydantic models for request validation in FastAPI instead of raw JSON dictionaries?
+- **Answer**:
+  - **Automatic Fail-Fast Validation**: With raw dictionaries (`request.json()`), your business logic must manually check `if "message" not in data:` or `if not isinstance(data["message"], str):`. If a field is missing, your code might crash downstream with a `KeyError` (HTTP 500). Pydantic automatically validates data types, string lengths, and schema constraints *before* code runs, instantly returning a clean HTTP 422 Unprocessable Entity error to the client.
+  - **Type Safety & Autocompletion**: Pydantic models convert untyped JSON payloads into strongly-typed Python objects. Your IDE provides autocompletion (`request.message`), eliminating typos.
+  - **Automatic OpenAPI Generation**: FastAPI uses Pydantic model schemas to automatically generate the Swagger UI and OpenAPI documentation at `/docs`.
+
+#### Q2: What does FastAPI's `/docs` (OpenAPI/Swagger) give frontend developers without you writing extra documentation?
+- **Answer**:
+  - **Interactive Sandbox ("Try it Out")**: Frontend and QA engineers can test API calls directly in the browser without installing Postman or writing cURL scripts.
+  - **Living, Self-Updating Contract**: Whenever you add a field to `ChatRequest` or `ChatResponse`, `/docs` updates instantly. There is zero risk of frontend developers relying on outdated Confluence or Notion API docs.
+  - **Client Code Generation (SDKs)**: The underlying `/openapi.json` spec can be imported into tools like `openapi-typescript-codegen` to automatically generate TypeScript interfaces and React API hooks with zero manual coding.
+
+#### Q3: Why is CORS middleware necessary if a React/Streamlit app talks to your FastAPI backend on different ports?
+- **Answer**:
+  - **The Same-Origin Policy (SOP)**: Web browsers enforce a fundamental security rule: JavaScript running on `http://localhost:3000` (React) is forbidden from reading HTTP responses from `http://localhost:8000` (FastAPI) unless the server explicitly gives permission.
+  - **The Fix**: `CORSMiddleware` intercepts incoming browser requests (and preflight `OPTIONS` requests) and attaches the `Access-Control-Allow-Origin` and `Access-Control-Allow-Methods` headers. This informs the browser that the frontend domain is authorized to read the response.
+
   - Default P1 severity behavior and Pydantic `ValidationError` enforcement on invalid tiers.
   - Tool-bound model invocation verifying automatic detection of `get_service_status` and `create_incident_ticket`.
 
