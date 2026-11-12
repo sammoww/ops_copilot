@@ -1,11 +1,13 @@
 """Production FastAPI application entrypoint for OpsCopilot."""
 
 from functools import lru_cache
+import json
 import re
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from src.agent import OpsCopilotAgent
 from src.api.schemas import ChatRequest, ChatResponse, HealthResponse
@@ -120,6 +122,45 @@ def chat_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OpsCopilot execution error: {str(exc)}",
         )
+
+
+@app.post(
+    "/chat/stream",
+    status_code=status.HTTP_200_OK,
+    tags=["Incident Response"],
+)
+@app.post(
+    "/api/v1/chat/stream",
+    status_code=status.HTTP_200_OK,
+    tags=["Incident Response"],
+)
+async def chat_stream_endpoint(
+    request: ChatRequest,
+    agent: OpsCopilotAgent = Depends(get_agent),
+) -> StreamingResponse:
+    """Stream progressive LLM tokens asynchronously using Server-Sent Events (SSE)."""
+
+    async def event_generator():
+        try:
+            async for token in agent.astream(query=request.message):
+                chunk_data = json.dumps({"token": token})
+                yield f"data: {chunk_data}\n\n"
+
+            # SSE termination signal
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            err_data = json.dumps({"error": str(exc)})
+            yield f"data: {err_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 if __name__ == "__main__":

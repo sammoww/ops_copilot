@@ -83,3 +83,66 @@ def test_cors_headers():
     response = client.get("/health", headers={"Origin": "http://localhost:3000"})
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") in ("*", "http://localhost:3000")
+
+
+def test_chat_stream_endpoint_returns_sse_tokens():
+    """Verify POST /api/v1/chat/stream returns text/event-stream chunks with SSE framing."""
+    import json
+
+    payload = {"message": "What is the status of the auth-service?"}
+    response = client.post("/api/v1/chat/stream", json=payload)
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+
+    # Parse SSE stream text
+    lines = [line.strip() for line in response.text.split("\n") if line.strip()]
+    assert len(lines) > 0
+
+    tokens = []
+    has_done_signal = False
+
+    for line in lines:
+        assert line.startswith("data: ")
+        raw_data = line.replace("data: ", "", 1).strip()
+        if raw_data == "[DONE]":
+            has_done_signal = True
+        else:
+            parsed = json.loads(raw_data)
+            assert "token" in parsed
+            tokens.append(parsed["token"])
+
+    assert has_done_signal is True
+    full_text = "".join(tokens)
+    assert "auth-service" in full_text
+    assert "HEALTHY" in full_text
+
+
+def test_chat_stream_runbook_tokens():
+    """Verify POST /chat/stream streams runbook troubleshooting guidance."""
+    import json
+
+    payload = {"message": "What are the procedure steps to fail over PostgreSQL to replica?"}
+    response = client.post("/chat/stream", json=payload)
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+
+    lines = [line.strip() for line in response.text.split("\n") if line.strip()]
+    tokens = []
+    for line in lines:
+        raw_data = line.replace("data: ", "", 1).strip()
+        if raw_data != "[DONE]":
+            tokens.append(json.loads(raw_data)["token"])
+
+    full_text = "".join(tokens)
+    assert "Isolate the degraded primary" in full_text
+    assert "pg_ctl promote" in full_text
+
+
+def test_chat_stream_empty_message_rejected():
+    """Verify streaming endpoint rejects empty message with 422 Unprocessable Entity."""
+    payload = {"message": ""}
+    response = client.post("/api/v1/chat/stream", json=payload)
+    assert response.status_code == 422
+

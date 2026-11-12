@@ -175,3 +175,18 @@ def test_agent_catches_validation_error_and_recovers():
     assert response.intermediate_steps[0].is_error is True
     assert "VALIDATION_ERROR" in response.intermediate_steps[0].output
     assert "invalid severity" in response.answer.lower()
+
+
+@pytest.mark.anyio
+async def test_agent_astream_progressive_tokens():
+    """Verify agent.astream yields tokens progressively asynchronously."""
+    agent = OpsCopilotAgent()
+    tokens = []
+    async for token in agent.astream("What is the status of the auth-service?"):
+        tokens.append(token)
+
+    assert len(tokens) > 1
+    full_text = "".join(tokens)
+    assert "auth-service" in full_text
+    assert "HEALTHY" in full_text
+

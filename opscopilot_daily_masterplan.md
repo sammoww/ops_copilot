@@ -369,9 +369,9 @@ Write a FastAPI endpoint POST /api/v1/chat/stream that accepts ChatRequest and r
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** What is the difference between WebSockets and Server-Sent Events (SSE)? Why is SSE ideal for LLM token streaming?
-* [ ] **Q2:** Why does waiting for the complete response (5–10 seconds) feel broken to users compared to streaming the first token in 400ms (Time to First Token - TTFT)?
-* [ ] **Q3:** Why must the streaming generator be an `async def` function in FastAPI when handling concurrent users?
+* [x] **Q1:** What is the difference between WebSockets and Server-Sent Events (SSE)? Why is SSE ideal for LLM token streaming?
+* [x] **Q2:** Why does waiting for the complete response (5–10 seconds) feel broken to users compared to streaming the first token in 400ms (Time to First Token - TTFT)?
+* [x] **Q3:** Why must the streaming generator be an `async def` function in FastAPI when handling concurrent users?
 
 ---
 

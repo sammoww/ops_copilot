@@ -247,6 +247,29 @@ class MockGroundedChatModel(BaseChatModel):
 
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content="\n".join(lines)))])
 
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[Any] = None,
+        **kwargs: Any,
+    ):
+        """Yield progressive tokens word-by-word for realistic token streaming."""
+        from langchain_core.messages import AIMessageChunk
+        from langchain_core.outputs import ChatGenerationChunk
+
+        result = self._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        for gen in result.generations:
+            msg = gen.message
+            content = getattr(msg, "content", "")
+            if content:
+                words = content.split(" ")
+                for i, word in enumerate(words):
+                    token = word if i == len(words) - 1 else word + " "
+                    yield ChatGenerationChunk(message=AIMessageChunk(content=token))
+            else:
+                yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_calls=getattr(msg, "tool_calls", [])))
+
     def bind_tools(self, tools: list[Any], **kwargs: Any) -> Any:
         """Bind external tools to the mock chat model returning a runnable binding."""
         return self.bind(tools=tools, **kwargs)

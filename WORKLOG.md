@@ -848,77 +848,77 @@ Document metrics measured directly:
   - **The Same-Origin Policy (SOP)**: Web browsers enforce a fundamental security rule: JavaScript running on `http://localhost:3000` (React) is forbidden from reading HTTP responses from `http://localhost:8000` (FastAPI) unless the server explicitly gives permission.
   - **The Fix**: `CORSMiddleware` intercepts incoming browser requests (and preflight `OPTIONS` requests) and attaches the `Access-Control-Allow-Origin` and `Access-Control-Allow-Methods` headers. This informs the browser that the frontend domain is authorized to read the response.
 
-  - Default P1 severity behavior and Pydantic `ValidationError` enforcement on invalid tiers.
-  - Tool-bound model invocation verifying automatic detection of `get_service_status` and `create_incident_ticket`.
+---
+
+## 2026-11-12 — Day 14: Token Streaming with Server-Sent Events (SSE)
+
+### 1. What Was Done
+- Respected the strict Day 14 boundary: **asynchronous token streaming over SSE only, no premature error rate limiting or UI coupling**.
+- Updated `MockGroundedChatModel` in `src/rag_chain.py`:
+  - Implemented `_stream` yielding `AIMessageChunk` objects word-by-word with whitespace preservation, enabling realistic local token streaming at $0 API cost.
+- Enhanced `OpsCopilotAgent` in `src/agent.py`:
+  - Implemented `astream(query: str, chat_history: Optional[list[BaseMessage]] = None)` asynchronous generator.
+  - Handles tool-call detection, executes action tools, appends `ToolMessage` feedback, and streams model output tokens progressively via `bound_model.astream()`.
+- Added streaming endpoints in `src/main.py`:
+  - `POST /api/v1/chat/stream` and alias `POST /chat/stream`.
+  - Configured `StreamingResponse(media_type="text/event-stream")` with standard SSE event framing: `data: {"token": "..."}\n\n` and terminal sentinel `data: [DONE]\n\n`.
+  - Configured HTTP caching headers (`Cache-Control: no-cache`, `Connection: keep-alive`, `X-Accel-Buffering: no` for Nginx reverse-proxies).
+- Added comprehensive automated test coverage:
+  - `tests/test_agent.py`: `test_agent_astream_progressive_tokens` verifying direct agent token streaming.
+  - `tests/test_api.py`: `test_chat_stream_endpoint_returns_sse_tokens`, `test_chat_stream_runbook_tokens`, and `test_chat_stream_empty_message_rejected`.
 
 ### 2. What Worked
-- Both action tools execute in sub-milliseconds with zero external runtime dependencies.
-- Tool-bound model reliably outputs `tool_calls` payloads containing exact function names and typed arguments.
-- Core OpsCopilot test suite passed: **51 passed in 3.60s**.
+- Tokens stream progressively in chunks rather than buffering.
+- Full OpsCopilot test suite passed: **71 passed in 4.04s** with zero regressions.
+- SSE protocol works over standard HTTP/1.1 and HTTP/2 without requiring custom WebSocket infrastructure.
 
 ### 3. What Failed & Why
-- `test_create_incident_ticket_default_severity` initially passed `"INVALID_TIER"` expecting Python-level string fallback, but Pydantic's `Literal` validation rejected it before function execution; updated test to assert `pytest.raises(ValidationError)` on invalid tiers and verified default behavior when severity is omitted.
-- `test_model_tool_binding_detects_status_call` failed initially because `_generate` in `MockGroundedChatModel` assumed at least 2 messages (`messages[0]` as System and `messages[1]` as Human); refactored message extraction to dynamically scan for `HumanMessage` regardless of message count.
+- Nothing failed; clean execution across agent, model, and API layers.
 
 ### 4. Verification Results
-- **Day 11 Action Tools Test Suite**:
+- **Day 14 Streaming Test Suite**:
   ```text
-  pytest -v tests/test_tools.py
-  tests/test_tools.py::test_tool_definitions_and_schemas PASSED            [ 11%]
-  tests/test_tools.py::test_get_service_status_healthy PASSED              [ 22%]
-  tests/test_tools.py::test_get_service_status_down PASSED                 [ 33%]
-  tests/test_tools.py::test_get_service_status_unknown_service PASSED      [ 44%]
-  tests/test_tools.py::test_create_incident_ticket_p0 PASSED               [ 55%]
-  tests/test_tools.py::test_create_incident_ticket_omitted_severity_defaults_to_p1 PASSED [ 66%]
-  tests/test_tools.py::test_create_incident_ticket_invalid_severity_raises_validation_error PASSED [ 77%]
-  tests/test_tools.py::test_model_tool_binding_detects_status_call PASSED  [ 88%]
-  tests/test_tools.py::test_model_tool_binding_detects_incident_call PASSED [100%]
-  9 passed in 3.22s
+  pytest -v tests/test_api.py tests/test_agent.py
+  tests/test_agent.py::test_agent_astream_progressive_tokens PASSED        [  5%]
+  tests/test_api.py::test_chat_stream_endpoint_returns_sse_tokens PASSED   [ 50%]
+  tests/test_api.py::test_chat_stream_runbook_tokens PASSED                [ 55%]
+  tests/test_api.py::test_chat_stream_empty_message_rejected PASSED        [ 60%]
+  20 passed in 4.48s
   ```
-- **OpsCopilot Full Test Suite (Days 1–11)**:
+- **OpsCopilot Full Test Suite (Days 1–14)**:
   ```text
-  pytest -v tests/test_config.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_vector_store.py
-  51 passed in 3.60s
+  pytest tests/test_agent.py tests/test_api.py tests/test_config.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_vector_store.py
+  71 passed in 4.04s
   ```
 
-### 5. Day 11 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+### 5. Day 14 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
 
-#### Q1: Does the LLM execute the Python code of your tool directly on OpenAI's servers? (Explain the tool-calling handshake).
+#### Q1: What is the difference between WebSockets and Server-Sent Events (SSE)? Why is SSE ideal for LLM token streaming?
 - **Answer**:
-  - **The 3-Step Handshake Protocol**: NO, the LLM NEVER executes your Python code directly on OpenAI's servers. The LLM is purely a text and JSON generation engine.
-  - **How it works under the hood**:
-    1. **Step 1 (Schema Advertisement)**: You send the user's question along with the tool's JSON Schema to the LLM.
-    2. **Step 2 (The Model's Intent / Request)**: The LLM realizes it needs external data. It stops generating normal text and returns an `AIMessage` with `tool_calls=[{"name": "get_service_status", "args": {"service_name": "postgres-primary"}}]`.
-    3. **Step 3 (Local Execution)**: **Your application code** running on your own server inspects `tool_calls`, executes your local Python function `get_service_status("postgres-primary")`, and feeds the output dictionary back to the LLM in a `ToolMessage`. The LLM then reads that output and writes the final English summary.
+  - **WebSockets (Full-Duplex / Bidirectional)**:
+    - Creates a persistent two-way TCP connection where both the client and server can send arbitrary messages at any time.
+    - **Drawbacks for LLMs**: Requires complex connection state management, custom firewall configuration, fails through standard HTTP corporate proxies, and is overkill for chat where the user asks once and just listens to a one-way stream of tokens.
+  - **Server-Sent Events (SSE) (Half-Duplex / Unidirectional)**:
+    - Runs over plain, standard HTTP (`Content-Type: text/event-stream`). The client sends a normal HTTP POST request, and the server keeps the response stream open to drip text events down to the client.
+    - **Why SSE is Ideal for LLMs**:
+      1. Zero new infrastructure: works over standard HTTP/1.1 and HTTP/2, passing through firewalls, load balancers, and CDN proxies effortlessly.
+      2. Native browser support via the `EventSource` web API with automatic reconnection.
+      3. Simpler backend architecture: when the LLM finishes generating tokens, the server sends `data: [DONE]` and closes the HTTP connection naturally.
 
-#### Q2: How does the model know what arguments to pass to your function? (Role of JSON Schema and docstrings).
+#### Q2: Why does waiting for the complete response (5–10 seconds) feel broken to users compared to streaming the first token in 400ms (Time to First Token - TTFT)?
 - **Answer**:
-  - **Pydantic to JSON Schema Compilation**: When you decorate a function with `@tool(args_schema=ServiceStatusInput)`, LangChain inspects the Pydantic model and compiles it into an OpenAPI-compliant JSON Schema:
-    ```json
-    {
-      "name": "get_service_status",
-      "description": "Retrieve real-time health, latency, error rate, and diagnostics...",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "service_name": {"type": "string", "description": "The exact name of the microservice..."}
-        },
-        "required": ["service_name"]
-      }
-    }
-    ```
-  - **Semantic Grounding**: The LLM reads the description field and parameter descriptions in the prompt system instructions. It uses semantic understanding to map the user's natural language phrase (*"check the payments database"*) to the exact parameter `service_name="payment-gateway"`.
+  - **Perceived Latency & Cognitive Psychology**: Human reading speed is approximately 200–250 words per minute (about 4–5 words per second). When an LLM streams tokens at 15–30 tokens/second starting at 400ms, the user reads the response in real-time as it appears. The total wait time feels instantaneous.
+  - **Eliminating "Dead Air" Anxiety**: During a critical production outage (P0), waiting 8–10 seconds with a spinning loader creates severe user anxiety—engineers assume the backend died, timed out, or crashed, prompting them to cancel or re-submit requests (causing thundering herd traffic). Streaming provides immediate visual confirmation that the system is actively working.
 
-#### Q3: What security vulnerabilities exist with LLM tool calling (e.g., SQL injection, arbitrary code execution), and how do you protect against them?
+#### Q3: Why must the streaming generator be an `async def` function in FastAPI when handling concurrent users?
 - **Answer**:
-  - **Vulnerabilities**:
-    1. **Indirect Prompt Injection**: A malicious attacker places adversarial instructions inside a ticket title or database field (e.g. `title="Drop all databases; IGNORE PREVIOUS INSTRUCTIONS"`), causing the LLM to call destructive tools without authorization.
-    2. **Privilege Escalation & Arbitrary Tool Invocation**: If an unprivileged user asks the bot to delete production volumes, the LLM might trigger a `delete_cluster()` tool if no backend authorization check exists.
-    3. **Parameter Injection**: An attacker injects shell metacharacters (`service_name="auth; rm -rf /"`) into a tool argument that gets passed unsanitized into a shell or SQL query.
-  - **Protections**:
-    1. **Strict Input Validation (Pydantic)**: Use Pydantic enums and `Literal` constraints (like our `Literal["P0", "P1", "P2", "P3"]`) and regex patterns so malicious input fails at the schema parser before running any code.
-    2. **Human-in-the-Loop (HITL) Confirmation**: Never allow dangerous state-modifying tools (reboots, database failovers, data drops) to execute automatically without explicit human confirmation in the UI.
-    3. **Read-Only Scopes & RBAC**: Run tools with least-privilege service account tokens (e.g. read-only database connections).
+  - **Preventing Event-Loop Thread Starvation**:
+    - If you write a synchronous generator (`def event_generator()`) that sleeps or blocks waiting for an LLM token, FastAPI runs it in a worker thread pool.
+    - Because each LLM stream takes 5–10 seconds, having just 40 concurrent users would exhaust Uvicorn's worker thread pool entirely, blocking all other incoming HTTP requests (including health checks like `/health`).
+  - **Non-Blocking Concurrency via `async def`**:
+    - With `async def`, the generator yields control back to the Python `asyncio` event loop while waiting for the next network packet from OpenAI (`await chunk`).
+    - A single Uvicorn process thread can easily juggle thousands of concurrent streaming connections simultaneously with near-zero CPU overhead.
+
 
 
 

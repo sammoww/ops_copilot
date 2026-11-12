@@ -208,6 +208,61 @@ class OpsCopilotAgent:
             error_message="Maximum agent iterations exceeded (loop guard triggered).",
         )
 
+    async def astream(
+        self,
+        query: str,
+        chat_history: Optional[list[BaseMessage]] = None,
+    ):
+        """Yield progressive tokens asynchronously from the agent execution loop.
+
+        Pipeline:
+        1. Evaluates incoming query against bound tools.
+        2. If a tool call is required, executes it and adds ToolMessage to conversation history.
+        3. Streams the final synthesized tokens progressively using the model's astream API.
+        """
+        if not query or not query.strip():
+            yield "No query provided. Please ask an operational question or request a service action."
+            return
+
+        messages: list[BaseMessage] = []
+        if chat_history:
+            messages.extend(chat_history)
+        messages.append(HumanMessage(content=query.strip()))
+
+        # Determine if tools are needed
+        response = await self.bound_model.ainvoke(messages)
+        tool_calls = getattr(response, "tool_calls", None) or []
+
+        if tool_calls:
+            messages.append(response)
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("name", "")
+                tool_args = tool_call.get("args", {})
+                call_id = tool_call.get("id", "call_stream")
+
+                if tool_name in self.tool_map:
+                    try:
+                        result = self.tool_map[tool_name].invoke(tool_args)
+                        result_str = json.dumps(result) if isinstance(result, dict) else str(result)
+                    except Exception as exc:
+                        result_str = f"TOOL_ERROR: {exc}"
+                else:
+                    result_str = f"TOOL_NOT_FOUND: {tool_name}"
+
+                messages.append(ToolMessage(content=result_str, tool_call_id=call_id))
+
+            # Stream final synthesized response
+            async for chunk in self.bound_model.astream(messages):
+                token = getattr(chunk, "content", "")
+                if token:
+                    yield token
+        else:
+            # Stream response directly
+            async for chunk in self.bound_model.astream(messages):
+                token = getattr(chunk, "content", "")
+                if token:
+                    yield token
+
 
 def run_agent(
     query: str,
