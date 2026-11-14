@@ -919,6 +919,82 @@ Document metrics measured directly:
     - With `async def`, the generator yields control back to the Python `asyncio` event loop while waiting for the next network packet from OpenAI (`await chunk`).
     - A single Uvicorn process thread can easily juggle thousands of concurrent streaming connections simultaneously with near-zero CPU overhead.
 
+---
+
+## 2026-11-14 — Day 15: Error Handling & Rate Limiting Guardrails
+
+### 1. What Was Done
+- Respected the strict Day 15 boundary: **production error boundaries and rate limit handling only, no UI development prematurely**.
+- Created `src/api/exceptions.py`:
+  - `OpsCopilotException`: Base domain exception with custom `status_code` and `error_code`.
+  - `RateLimitException`: Dedicated HTTP 429 exception carrying `retry_after=5` seconds.
+  - `UpstreamServiceException`: Dedicated HTTP 503 exception carrying `retry_after=10` seconds for timeouts, upstream network drops, or cloud outages.
+- Enhanced `src/api/schemas.py`:
+  - Added `ErrorResponse` schema enforcing structured error contracts: `error_code: str`, `message: str`, `retry_after: Optional[int]`, `timestamp: str`.
+- Integrated Global Exception Handlers in `src/main.py`:
+  - `@app.exception_handler(RateLimitException)`: Returns HTTP 429 JSON with `Retry-After: 5` header and structured payload.
+  - `@app.exception_handler(UpstreamServiceException)`: Returns HTTP 503 JSON with `Retry-After: 10` header for timeouts.
+  - `@app.exception_handler(OpsCopilotException)`: Catch-all for domain exceptions.
+  - Wrapped `chat_endpoint` to translate upstream OpenAI `RateLimitError` and socket timeouts into standardized domain exceptions while suppressing raw stack traces.
+- Created `tests/test_errors.py` with 5 automated test cases:
+  1. Direct `RateLimitException` returns 429 with `Retry-After` header.
+  2. Direct `UpstreamServiceException` returns 503 with `Retry-After` header.
+  3. Agent error message translation to 429 rate limit.
+  4. Agent error message translation to 503 upstream timeout.
+  5. Unhandled exception returns clean HTTP 500 and suppresses sensitive stack traces/passwords.
+
+### 2. What Worked
+- Clean separation between internal exception logging and client-facing error payloads.
+- Upstream 429 and 503 status codes give API callers and frontend UIs clear signals to back off and retry.
+- Full OpsCopilot test suite passed: **76 passed in 4.27s** with zero regressions.
+
+### 3. What Failed & Why
+- Nothing failed; clean execution across exception classes, FastAPI handlers, and test fixtures.
+
+### 4. Verification Results
+- **Day 15 Error Handling Test Suite**:
+  ```text
+  pytest -v tests/test_errors.py
+  tests/test_errors.py::test_rate_limit_exception_returns_429 PASSED       [ 20%]
+  tests/test_errors.py::test_upstream_service_timeout_returns_503 PASSED   [ 40%]
+  tests/test_errors.py::test_agent_error_message_translates_to_rate_limit PASSED [ 60%]
+  tests/test_errors.py::test_agent_error_message_translates_to_timeout PASSED [ 80%]
+  tests/test_errors.py::test_generic_unhandled_exception_returns_clean_500 PASSED [100%]
+  5 passed in 4.71s
+  ```
+- **OpsCopilot Full Test Suite (Days 1–15)**:
+  ```text
+  pytest tests/test_agent.py tests/test_api.py tests/test_config.py tests/test_errors.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_vector_store.py
+  76 passed in 4.27s
+  ```
+
+### 5. Day 15 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: How does an exponential backoff retry policy work when calling upstream LLM APIs?
+- **Answer**:
+  - **The Problem**: When OpenAI returns HTTP 429 (Too Many Requests), immediately hammering the API again with a retry will only worsen server congestion and extend your ban.
+  - **Exponential Backoff Formula**: Instead of retrying immediately, the client multiplies the wait time exponentially after each failed attempt:
+    $$\text{Wait Time} = \text{Base Delay} \times 2^{\text{attempt}} \pm \text{Jitter}$$
+    - Attempt 1: Wait 1 second ($1 \times 2^0$)
+    - Attempt 2: Wait 2 seconds ($1 \times 2^1$)
+    - Attempt 3: Wait 4 seconds ($1 \times 2^2$)
+    - Attempt 4: Wait 8 seconds ($1 \times 2^3$)
+  - **The Role of Jitter**: Adding random milliseconds ("jitter") prevents the "Thundering Herd" problem, where thousands of simultaneous clients retry at the exact same second, crashing the server again.
+
+#### Q2: What is the risk of exposing raw Python stack traces (`Traceback (most recent call last)`) to API clients?
+- **Answer**:
+  - **Information Disclosure / Security Vulnerability (CWE-209)**:
+    1. **File System Paths**: Stack traces reveal your local OS directory structure (e.g. `C:\ai_projects_2\OpsCopilot\src\...` or `/home/ubuntu/app/...`), telling attackers what OS, usernames, and folder layouts you use.
+    2. **Dependency Versions & Vulnerabilities**: Traces reveal exact third-party package names and version numbers, allowing attackers to cross-reference known CVEs.
+    3. **Leaked Secrets**: If a database connection or API call crashes, local variable values (API keys, connection strings, session tokens) can be printed directly in the trace.
+  - **Best Practice**: Catch all unhandled exceptions at the server boundary. Log the full traceback privately to server-side telemetry (Datadog/CloudWatch), and return a generic error message with an internal correlation ID (`"An unexpected error occurred. Request ID: req_9821"`).
+
+#### Q3: What HTTP status code should be returned when the upstream LLM hits rate limits?
+- **Answer**:
+  - **HTTP 429 Too Many Requests**: This is the official IETF standard (RFC 6585) indicating that the caller has sent too many requests in a given amount of time.
+  - **Mandatory Header (`Retry-After`)**: Standards-compliant servers must include a `Retry-After: <seconds>` header (e.g. `Retry-After: 5`) informing clients exactly how long to wait before trying again.
+
+
 
 
 

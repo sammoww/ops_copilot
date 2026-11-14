@@ -387,9 +387,9 @@ Write a FastAPI endpoint POST /api/v1/chat/stream that accepts ChatRequest and r
 3. Test by simulating a missing API key or invalid payload.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** How does an exponential backoff retry policy work when calling upstream LLM APIs?
-* [ ] **Q2:** What is the risk of exposing raw Python stack traces (`Traceback (most recent call last)`) to API clients?
-* [ ] **Q3:** What HTTP status code should be returned when the upstream LLM hits rate limits?
+* [x] **Q1:** How does an exponential backoff retry policy work when calling upstream LLM APIs?
+* [x] **Q2:** What is the risk of exposing raw Python stack traces (`Traceback (most recent call last)`) to API clients?
+* [x] **Q3:** What HTTP status code should be returned when the upstream LLM hits rate limits?
 
 ---
 

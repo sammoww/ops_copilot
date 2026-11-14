@@ -48,3 +48,29 @@ class HealthResponse(BaseModel):
 
     status: str = Field(default="ok", description="Operational readiness status.")
     version: str = Field(default="0.1.0", description="API semantic version.")
+
+
+class ErrorResponse(BaseModel):
+    """Standardized error contract for all API failures."""
+
+    error_code: str = Field(
+        ...,
+        description="Machine-readable error identifier (e.g. RATE_LIMIT_EXCEEDED, UPSTREAM_TIMEOUT).",
+        json_schema_extra={"example": "RATE_LIMIT_EXCEEDED"},
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable explanation of what went wrong and guidance.",
+        json_schema_extra={"example": "OpsCopilot is temporarily experiencing high demand. Please retry in 5 seconds."},
+    )
+    retry_after: Optional[int] = Field(
+        default=None,
+        description="Suggested wait time in seconds before client should retry.",
+        json_schema_extra={"example": 5},
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO 8601 timestamp of when the error was trapped.",
+        json_schema_extra={"example": "2026-11-14T10:35:00Z"},
+    )
+

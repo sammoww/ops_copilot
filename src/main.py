@@ -1,16 +1,21 @@
 """Production FastAPI application entrypoint for OpsCopilot."""
 
+from datetime import datetime, timezone
 from functools import lru_cache
 import json
+import logging
 import re
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.agent import OpsCopilotAgent
-from src.api.schemas import ChatRequest, ChatResponse, HealthResponse
+from src.api.exceptions import OpsCopilotException, RateLimitException, UpstreamServiceException
+from src.api.schemas import ChatRequest, ChatResponse, ErrorResponse, HealthResponse
+
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -29,6 +34,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RateLimitException)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitException) -> JSONResponse:
+    """Handle 429 Rate Limit exceptions with standardized payload and Retry-After header."""
+    logger.warning(f"Rate limit triggered on {request.url.path}: {exc.message}")
+    payload = ErrorResponse(
+        error_code=exc.error_code,
+        message=exc.message,
+        retry_after=exc.retry_after,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=payload.model_dump(),
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+@app.exception_handler(UpstreamServiceException)
+async def upstream_service_exception_handler(request: Request, exc: UpstreamServiceException) -> JSONResponse:
+    """Handle 503 Upstream Outage exceptions with standardized payload and Retry-After header."""
+    logger.error(f"Upstream outage on {request.url.path}: {exc.message}")
+    payload = ErrorResponse(
+        error_code=exc.error_code,
+        message=exc.message,
+        retry_after=exc.retry_after,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=payload.model_dump(),
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+@app.exception_handler(OpsCopilotException)
+async def opscopilot_base_exception_handler(request: Request, exc: OpsCopilotException) -> JSONResponse:
+    """Handle domain exceptions with custom status codes."""
+    logger.error(f"OpsCopilot domain error on {request.url.path}: {exc.message}")
+    payload = ErrorResponse(
+        error_code=exc.error_code,
+        message=exc.message,
+        retry_after=None,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=payload.model_dump(),
+    )
 
 
 @lru_cache
@@ -105,6 +160,13 @@ def chat_endpoint(
     try:
         agent_response = agent.run(query=request.message)
 
+        if not agent_response.success and agent_response.error_message:
+            err_lower = agent_response.error_message.lower()
+            if "rate limit" in err_lower or "429" in err_lower:
+                raise RateLimitException()
+            if "timeout" in err_lower or "connection" in err_lower or "unavailable" in err_lower:
+                raise UpstreamServiceException()
+
         sources = _extract_sources(
             answer=agent_response.answer,
             intermediate_steps=agent_response.intermediate_steps,
@@ -117,10 +179,19 @@ def chat_endpoint(
             success=agent_response.success,
         )
 
+    except (RateLimitException, UpstreamServiceException, OpsCopilotException):
+        raise
     except Exception as exc:
+        err_str = str(exc).lower()
+        if "rate limit" in err_str or "429" in err_str:
+            raise RateLimitException()
+        if "timeout" in err_str or "timed out" in err_str or "connection" in err_str:
+            raise UpstreamServiceException()
+
+        logger.exception(f"Unhandled server error during chat query: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OpsCopilot execution error: {str(exc)}",
+            detail="An unexpected internal error occurred. Please contact the DevOps on-call team.",
         )
 
 
