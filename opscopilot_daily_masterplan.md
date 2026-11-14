@@ -411,9 +411,9 @@ Write a FastAPI endpoint POST /api/v1/chat/stream that accepts ChatRequest and r
 5. Run: `streamlit run ui/app.py`.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why is it better architecture to keep Streamlit completely decoupled from the AI logic (calling FastAPI via HTTP) rather than importing `rag_chain.py` directly into Streamlit?
-* [ ] **Q2:** How does Streamlit's execution model work (how does the whole script rerun on user interaction)?
-* [ ] **Q3:** How do session states (`st.session_state`) preserve chat history across reruns?
+* [x] **Q1:** Why is it better architecture to keep Streamlit completely decoupled from the AI logic (calling FastAPI via HTTP) rather than importing `rag_chain.py` directly into Streamlit?
+* [x] **Q2:** How does Streamlit's execution model work (how does the whole script rerun on user interaction)?
+* [x] **Q3:** How do session states (`st.session_state`) preserve chat history across reruns?
 
 ---
 
