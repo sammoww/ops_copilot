@@ -435,9 +435,9 @@ Write a production-grade Dockerfile using python:3.11-slim with non-root user pe
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why do we copy `requirements.txt` and run `pip install` BEFORE copying the rest of the application code in a Dockerfile? (Docker layer caching).
-* [ ] **Q2:** Why should you avoid running containers as the `root` user in enterprise production?
-* [ ] **Q3:** What is the purpose of `.dockerignore`? (Name 3 things that should be in it).
+* [x] **Q1:** Why do we copy `requirements.txt` and run `pip install` BEFORE copying the rest of the application code in a Dockerfile? (Docker layer caching).
+* [x] **Q2:** Why should you avoid running containers as the `root` user in enterprise production?
+* [x] **Q3:** What is the purpose of `.dockerignore`? (Name 3 things that should be in it).
 
 ---
 
@@ -530,23 +530,23 @@ Before submitting job applications, answer these 5 comprehensive questions out l
 
 | Day | Focus Area | Status | Defense Score (1-5) |
 |---|---|---|---|
-| Day 1 | Environment, Virtualenv & Pydantic Config | [ ] | |
-| Day 2 | Curating 3-5 Technical Runbooks | [ ] | |
-| Day 3 | Token Chunking with Overlap | [ ] | |
-| Day 4 | Embeddings & ChromaDB Persistence | [ ] | |
-| Day 5 | Read-Only Semantic Search CLI | [ ] | |
-| Day 6 | Strict Anti-Hallucination Prompting | [ ] | |
-| Day 7 | LangChain LCEL RAG Pipeline | [ ] | |
-| Day 8 | Automated Grounding & Refusal Tests | [ ] | |
-| Day 9 | Multi-Turn Memory & Query Rewriting | [ ] | |
-| Day 10 | Encapsulated Service Class | [ ] | |
-| Day 11 | Tool Definitions with Pydantic | [ ] | |
-| Day 12 | Tool Execution & Routing Loop | [ ] | |
-| Day 13 | FastAPI App & Pydantic Schemas | [ ] | |
-| Day 14 | SSE Token Streaming Endpoint | [ ] | |
-| Day 15 | Error Handlers & Upstream Retries | [ ] | |
-| Day 16 | Streamlit Streaming Chat UI | [ ] | |
-| Day 17 | Dockerfile & Docker Compose | [ ] | |
+| Day 1 | Environment, Virtualenv & Pydantic Config | [x] | 5 |
+| Day 2 | Curating 3-5 Technical Runbooks | [x] | 5 |
+| Day 3 | Token Chunking with Overlap | [x] | 5 |
+| Day 4 | Embeddings & ChromaDB Persistence | [x] | 5 |
+| Day 5 | Read-Only Semantic Search CLI | [x] | 5 |
+| Day 6 | Strict Anti-Hallucination Prompting | [x] | 5 |
+| Day 7 | LangChain LCEL RAG Pipeline | [x] | 5 |
+| Day 8 | Automated Grounding & Refusal Tests | [x] | 5 |
+| Day 9 | Multi-Turn Memory & Query Rewriting | [x] | 5 |
+| Day 10 | Encapsulated Service Class | [x] | 5 |
+| Day 11 | Tool Definitions with Pydantic | [x] | 5 |
+| Day 12 | Tool Execution & Routing Loop | [x] | 5 |
+| Day 13 | FastAPI App & Pydantic Schemas | [x] | 5 |
+| Day 14 | SSE Token Streaming Endpoint | [x] | 5 |
+| Day 15 | Error Handlers & Upstream Retries | [x] | 5 |
+| Day 16 | Streamlit Streaming Chat UI | [x] | 5 |
+| Day 17 | Dockerfile & Docker Compose | [x] | 5 |
 | Day 18 | Architecture Flowchart & README | [ ] | |
 | Day 19 | 60-Second Video Demo & Git Push | [ ] | |
 | Day 20 | Resume Bullets & Final Oral Defense | [ ] | |

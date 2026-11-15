@@ -1055,6 +1055,77 @@ Document metrics measured directly:
     2. It loops through `st.session_state["messages"]` and re-draws all previous conversation bubbles.
     3. When the user asks a new question, the code appends the new message to `st.session_state["messages"]`, so the next rerun will display it as well.
 
+---
+
+## 2026-11-15 — Day 17: Multi-Stage Dockerfile & Docker Compose
+
+### 1. What Was Done
+- Respected the strict Day 17 boundary: **containerization, multi-service orchestration, and build validation only**.
+- Created production-grade `Dockerfile`:
+  - Base image: `python:3.12-slim`.
+  - Configured environment variables: `PYTHONUNBUFFERED=1` (real-time stdout/stderr flush) and `PYTHONDONTWRITEBYTECODE=1`.
+  - Optimized layer caching: copied `requirements.txt` and executed `pip install --no-cache-dir` *before* copying application code.
+  - Hardened container security: created dedicated non-root user `appuser` (UID 10001) with restricted permissions on `/app`.
+  - Declared ports: `EXPOSE 8000 8501`.
+  - Configured default entry command: `CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]`.
+- Created `docker-compose.yml`:
+  - Defined shared isolated bridge network: `opscopilot-net`.
+  - Defined `backend` service: runs FastAPI on port 8000 with a container healthcheck polling `GET /health` every 10s.
+  - Defined `frontend` service: runs Streamlit on port 8501, overriding the default container command to `streamlit run ui/app.py --server.port 8501 --server.address 0.0.0.0`.
+  - Configured orchestrator synchronization: `depends_on` with `condition: service_healthy` to prevent frontend from querying a booting backend.
+  - Injected runtime environment variables: `OPSCOPILOT_API_URL=http://backend:8000`.
+- Created `.dockerignore`:
+  - Excluded virtual environments (`venv/`, `env/`), source control (`.git/`), cache directories (`__pycache__/`, `.pytest_cache/`), secrets (`.env`), test artifacts, and local vector stores (`chroma_db/`).
+- Created `tests/test_docker.py`:
+  - Automated tests verifying Dockerfile directives, non-root user configuration, docker-compose service definitions, healthcheck structure, and `.dockerignore` patterns.
+- Verified test suite: **3/3 Docker tests passed in 0.12s**; full OpsCopilot test suite: **81/81 passed in 4.27s**.
+
+### 2. What Worked
+- Single image design pattern: both backend (FastAPI) and frontend (Streamlit) services leverage the exact same built container image, overriding only the startup command in compose.
+- Compose healthcheck dependency ensures deterministic container startup order.
+- Layer cache optimization drastically accelerates repeated builds by preventing redundant pip dependency installation.
+
+### 3. What Failed & Why
+- Nothing failed; clean implementation and verification on first attempt.
+
+### 4. Verification Results
+- **Day 17 Docker Test Suite**:
+  ```text
+  pytest -v tests/test_docker.py
+  tests/test_docker.py::test_dockerfile_structure_and_directives PASSED    [ 33%]
+  tests/test_docker.py::test_docker_compose_validity_and_services PASSED   [ 66%]
+  tests/test_docker.py::test_dockerignore_excludes_unnecessary_artifacts PASSED [100%]
+  3 passed in 0.12s
+  ```
+- **OpsCopilot Full Test Suite (Days 1–17)**:
+  ```text
+  pytest tests/test_agent.py tests/test_api.py tests/test_config.py tests/test_docker.py tests/test_errors.py tests/test_grounding.py tests/test_ingest.py tests/test_memory.py tests/test_prompts.py tests/test_query.py tests/test_rag_chain.py tests/test_service.py tests/test_tools.py tests/test_ui.py tests/test_vector_store.py
+  81 passed in 4.27s
+  ```
+
+### 5. Day 17 Knowledge Defense (The Lead Reviewer Assessor Checkpoint)
+
+#### Q1: Why do we copy `requirements.txt` and run `pip install` BEFORE copying the rest of the application code in a Dockerfile? (Docker layer caching).
+- **Answer**:
+  - **Docker Layer Caching**: Docker builds images layer by layer. If an instruction and the files it references have not changed, Docker reuses the cached layer from the previous build instead of re-executing the step.
+  - **Minimizing Cache Invalidation**: Source code changes frequently (every few minutes during development), whereas dependencies (`requirements.txt`) change infrequently.
+  - **The Performance Cost**: If we ran `COPY . /app` *before* `pip install`, every single code edit (even a 1-character typo fix) would invalidate the cache at that step, forcing Docker to re-download and re-install all Python dependencies on every single build. Placing `COPY requirements.txt` and `pip install` first ensures that the heavy installation layer is cached and reused instantly in under 1 second.
+
+#### Q2: Why should you avoid running containers as the `root` user in enterprise production?
+- **Answer**:
+  - **Container Escape Vulnerabilities**: In Linux containers, the root user inside the container has UID 0—the exact same UID as root on the host machine. If an attacker discovers a vulnerability in Python, FastAPI, or a native C extension that allows a container escape, they obtain full root administrative access to the underlying host node and all neighboring containers.
+  - **Defense in Depth & Least Privilege**: Running as an unprivileged user (`USER appuser`, UID 10001) ensures that even if an attacker achieves remote code execution (RCE) inside the container, they cannot modify system packages, mount host filesystems, or elevate privileges.
+  - **Enterprise Compliance**: Modern Kubernetes security policies (Pod Security Standards / Open Policy Agent / Kyverno) and cloud compliance frameworks (SOC 2, PCI-DSS) strictly mandate `runAsNonRoot: true` and block containers that run as root from being scheduled.
+
+#### Q3: What is the purpose of `.dockerignore`? (Name 3 things that should be in it).
+- **Answer**:
+  - **Purpose of `.dockerignore`**: When building an image, Docker CLI first copies everything in the directory to the Docker daemon as the "build context". A `.dockerignore` file prevents unnecessary, large, or sensitive local files from being sent to the daemon or copied into the container image.
+  - **3 Critical Exclusions**:
+    1. **Secrets (`.env`)**: Committing or copying local `.env` files into a Docker image embeds secret API keys into the immutable image layers, which can be viewed by anyone who pulls the image (`docker history`).
+    2. **Local Virtual Environments (`venv/`)**: Virtual environments built on Windows/macOS contain host-specific binaries that will fail or corrupt a Linux container, while adding hundreds of megabytes of useless build context.
+    3. **Source Control Metadata (`.git/`)**: Adds unnecessary size to the build context, slows down CI/CD builds, and risks exposing proprietary commit history or developer credentials.
+
+
 
 
 
