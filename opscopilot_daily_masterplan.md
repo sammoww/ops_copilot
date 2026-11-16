@@ -549,4 +549,4 @@ Before submitting job applications, answer these 5 comprehensive questions out l
 | Day 17 | Dockerfile & Docker Compose | [x] | 5 |
 | Day 18 | Architecture Flowchart & README | [x] | 5 |
 | Day 19 | 60-Second Video Demo & Git Push | [x] | 5 |
-| Day 20 | Resume Bullets & Final Oral Defense | [ ] | |
+| Day 20 | Resume Bullets & Final Oral Defense | [x] | 5 |

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sammoww/ops_copilot"><img src="https://img.shields.io/badge/Tests-81%2F81%20Passing-brightgreen?style=flat-square&logo=pytest" alt="Test Status"></a>
+  <a href="https://github.com/sammoww/ops_copilot"><img src="https://img.shields.io/badge/Tests-88%2F88%20Passing-brightgreen?style=flat-square&logo=pytest" alt="Test Status"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.12-blue?style=flat-square&logo=python" alt="Python Version"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/API-FastAPI%20REST%20%26%20SSE-009688?style=flat-square&logo=fastapi" alt="FastAPI"></a>
   <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/UI-Streamlit%201.35%2B-FF4B4B?style=flat-square&logo=streamlit" alt="Streamlit"></a>
@@ -275,8 +275,8 @@ tests/test_docker.py ...                                                 [100%]
 | **Day 16** | Streamlit Streaming Chat UI | ✅ Complete | Decoupled UI with multi-turn `st.session_state` & `st.write_stream` |
 | **Day 17** | Multi-Stage Dockerfile & Docker Compose | ✅ Complete | Non-root container image, compose multi-service orchestration |
 | **Day 18** | Architecture Flowchart & README Construction | ✅ Complete | Recruiter-grade documentation, ASCII flowcharts, cURL examples |
-| **Day 19** | Screen Demo & Git Polish | ⏳ Next Up | 60-second video demo walkthrough & Git repository polish |
-| **Day 20** | Resume Bullets & Final Oral Defense | ⏳ Upcoming | Career conversion, resume bullets & senior interview defense |
+| **Day 19** | Screen Demo & Git Polish | ✅ Complete | Automated CLI demo walkthrough harness (`demo_walkthrough.py`) |
+| **Day 20** | Resume Bullets & Final Oral Defense | ✅ Complete | Career conversion, resume bullets & senior interview defense calibration |
 
 ---
 
