@@ -15,6 +15,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License"></a>
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" alt="OpsCopilot Animated Live Demo" width="800">
+</p>
+
 ---
 
 ## ⚡ The 2-Sentence Pitch
