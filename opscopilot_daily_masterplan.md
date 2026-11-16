@@ -474,9 +474,9 @@ Write a production-grade Dockerfile using python:3.11-slim with non-root user pe
 ```
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** If a technical recruiter spends 45 seconds reviewing your GitHub repository, what 3 things must they see immediately?
-* [ ] **Q2:** Why does having an architecture diagram elevate a repository from a "student/tutorial project" to an "engineer's project"?
-* [ ] **Q3:** How do you ensure no API keys or secrets were accidentally committed to git history? (`git log -S`, `.gitignore`).
+* [x] **Q1:** If a technical recruiter spends 45 seconds reviewing your GitHub repository, what 3 things must they see immediately?
+* [x] **Q2:** Why does having an architecture diagram elevate a repository from a "student/tutorial project" to an "engineer's project"?
+* [x] **Q3:** How do you ensure no API keys or secrets were accidentally committed to git history? (`git log -S`, `.gitignore`).
 
 ---
 
@@ -547,6 +547,6 @@ Before submitting job applications, answer these 5 comprehensive questions out l
 | Day 15 | Error Handlers & Upstream Retries | [x] | 5 |
 | Day 16 | Streamlit Streaming Chat UI | [x] | 5 |
 | Day 17 | Dockerfile & Docker Compose | [x] | 5 |
-| Day 18 | Architecture Flowchart & README | [ ] | |
+| Day 18 | Architecture Flowchart & README | [x] | 5 |
 | Day 19 | 60-Second Video Demo & Git Push | [ ] | |
 | Day 20 | Resume Bullets & Final Oral Defense | [ ] | |
