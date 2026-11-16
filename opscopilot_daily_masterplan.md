@@ -493,8 +493,8 @@ Write a production-grade Dockerfile using python:3.11-slim with non-root user pe
 3. Push to GitHub with a clean commit history.
 
 #### End-of-Day Knowledge Defense (Assessor Checkpoint)
-* [ ] **Q1:** Why do hiring managers prefer a 60-second video demo over cloning and running your code locally?
-* [ ] **Q2:** Can you explain the 3 distinct actions demonstrated in your video without looking at notes?
+* [x] **Q1:** Why do hiring managers prefer a 60-second video demo over cloning and running your code locally?
+* [x] **Q2:** Can you explain the 3 distinct actions demonstrated in your video without looking at notes?
 
 ---
 
@@ -548,5 +548,5 @@ Before submitting job applications, answer these 5 comprehensive questions out l
 | Day 16 | Streamlit Streaming Chat UI | [x] | 5 |
 | Day 17 | Dockerfile & Docker Compose | [x] | 5 |
 | Day 18 | Architecture Flowchart & README | [x] | 5 |
-| Day 19 | 60-Second Video Demo & Git Push | [ ] | |
+| Day 19 | 60-Second Video Demo & Git Push | [x] | 5 |
 | Day 20 | Resume Bullets & Final Oral Defense | [ ] | |

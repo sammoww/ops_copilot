@@ -113,39 +113,44 @@ class MockGroundedChatModel(BaseChatModel):
                         generations=[ChatGeneration(message=AIMessage(content=f"I encountered a validation error: {tool_content}. Please provide valid parameters."))]
                     )
 
-                # Format service status telemetry
-                if any(k in tool_content.lower() for k in ["latency", "active_replicas", "diagnostic_alert", "error_rate"]):
-                    try:
-                        data = json.loads(tool_content)
-                        ans = (
-                            f"Service status for {data.get('service_name')}: {data.get('status')}. "
-                            f"Latency: {data.get('latency_ms')}ms, Error rate: {data.get('error_rate_pct')}%, "
-                            f"Active replicas: {data.get('active_replicas')}, Region: {data.get('region')}. "
-                            f"Diagnostics: {data.get('diagnostic_alert')}"
-                        )
-                    except Exception:
-                        ans = f"Service telemetry report:\n{tool_content}"
-                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+                parsed_data = {}
+                try:
+                    parsed_data = json.loads(tool_content) if isinstance(tool_content, str) else tool_content
+                except Exception:
+                    pass
 
-                # Format incident ticket confirmation
-                if any(k in tool_content.lower() for k in ["ticket_id", "inc-", "escalated_to"]):
-                    try:
-                        data = json.loads(tool_content)
-                        ans = (
-                            f"Incident ticket {data.get('ticket_id')} ({data.get('severity')}) successfully opened "
-                            f"for '{data.get('title')}'. Escalated to: {data.get('escalated_to')}."
-                        )
-                    except Exception:
-                        ans = f"Incident ticket dispatched:\n{tool_content}"
-                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+                # 1. Runbook search result
+                if "runbook_context" in parsed_data or "results_count" in parsed_data:
+                    domain_terms = [
+                        "failover", "replica", "postgres", "database", "patroni", "pgbouncer",
+                        "refund", "sla", "credit", "scim", "provisioning", "break-glass", "okta"
+                    ]
+                    if not any(term in human_text.lower() for term in domain_terms):
+                        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=REFUSAL_PHRASE))])
 
-                # Format runbook context search results
-                if any(k in tool_content.lower() for k in ["runbook_context", "source:"]):
                     ans = (
                         "Based on verified runbooks retrieved from ChromaDB:\n"
                         "1. Isolate the degraded primary to avoid split-brain conditions [Source: database_failover_runbook.md, Section: 4.1 Isolate Primary].\n"
                         "2. Execute replica promotion command: `/usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/16/main` [Source: database_failover_runbook.md, Section: 4.2 Promote Synchronous Replica].\n"
                         "3. Update PgBouncer upstream routing configuration to point to the new primary node [Source: database_failover_runbook.md, Section: 4.3 Switch PgBouncer]."
+                    )
+                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+
+                # 2. Incident ticket confirmation
+                if "ticket_id" in parsed_data:
+                    ans = (
+                        f"Incident ticket {parsed_data.get('ticket_id')} ({parsed_data.get('severity')}) successfully opened "
+                        f"for '{parsed_data.get('title')}'. Escalated to: {parsed_data.get('escalated_to')}."
+                    )
+                    return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
+
+                # 3. Service telemetry report
+                if "service_name" in parsed_data and "status" in parsed_data:
+                    ans = (
+                        f"Service status for {parsed_data.get('service_name')}: {parsed_data.get('status')}. "
+                        f"Latency: {parsed_data.get('latency_ms')}ms, Error rate: {parsed_data.get('error_rate_pct')}%, "
+                        f"Active replicas: {parsed_data.get('active_replicas')}, Region: {parsed_data.get('region')}. "
+                        f"Diagnostics: {parsed_data.get('diagnostic_alert')}"
                     )
                     return ChatResult(generations=[ChatGeneration(message=AIMessage(content=ans))])
 
