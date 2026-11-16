@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="OpsCopilot Animated Live Demo" width="800">
+  <img src="https://raw.githubusercontent.com/sammoww/ops_copilot/main/docs/demo.gif" alt="OpsCopilot Animated Live Demo" width="800">
 </p>
 
 ---
